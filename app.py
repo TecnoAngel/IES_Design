@@ -349,6 +349,10 @@ elif page == "Diseño de la programación":
                 for r in rows
             ]
 
+        from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
+
+        st.session_state.setdefault("il_nonce", 0)
+
         with st.container(border=True):
             st.markdown(
                 '<div class="mini-label">CE se elige de la lista · CED e IL (4.2.1, 4.2.2…) '
@@ -357,64 +361,113 @@ elif page == "Diseño de la programación":
                 unsafe_allow_html=True,
             )
 
-            def _empty_to_none(value):
-                return None if value in (None, "") else value
+            ac1, ac2, ac3, ac4 = st.columns([2, 1, 1.7, 1.7])
+            add_ce = ac1.selectbox("Criterio", ce_list, key="il_add_ce", label_visibility="collapsed")
+            add_n = ac2.number_input("nº", 1, 20, 1, key="il_add_n", label_visibility="collapsed")
+            add_click = ac3.button("Añadir indicador(es)", use_container_width=True)
+            del_click = ac4.button("Borrar filas seleccionadas", use_container_width=True)
+
+            if add_click:
+                for _ in range(int(add_n)):
+                    st.session_state.il_rows.append(
+                        {
+                            "CE": add_ce, "CED": "", "IL": "", "PIL": 1,
+                            "DIL": "", "DO": "", "CON": "", "CT": "",
+                            "IE": "", "CC": "", "AE": "", "SA": None,
+                        }
+                    )
+                st.session_state.il_rows = il_recompute(
+                    st.session_state.il_rows, ce_ced, ce_list
+                )
+                st.session_state.il_nonce += 1
+                st.session_state.pop("prog_out", None)
+                st.rerun()
 
             il_df = pd.DataFrame(
                 [
                     {
+                        "__id": i,
+                        "__shade": False,  # se calcula justo debajo
                         "CE": r["CE"], "IL": r["IL"],
                         "PIL": r["PIL"], "PIL%": r["PIL%"] * 100,
-                        "DIL": _empty_to_none(r["DIL"]), "DO": _empty_to_none(r["DO"]),
-                        "CON": _empty_to_none(r["CON"]), "CT": _empty_to_none(r["CT"]),
-                        "IE": _empty_to_none(r["IE"]), "CC": _empty_to_none(r["CC"]),
-                        "AE": _empty_to_none(r["AE"]), "SA": r["SA"],
-                        "CED": _empty_to_none(r["CED"]),
+                        "DIL": r["DIL"], "DO": r["DO"], "CON": r["CON"], "CT": r["CT"],
+                        "IE": r["IE"], "CC": r["CC"], "AE": r["AE"],
+                        "SA": "" if r["SA"] in (None, "") else str(r["SA"]),
+                        "CED": r["CED"],
                     }
-                    for r in st.session_state.il_rows
+                    for i, r in enumerate(st.session_state.il_rows)
                 ],
-                columns=["CE", "IL", "PIL", "PIL%", "DIL", "DO", "CON", "CT", "IE", "CC", "AE", "SA", "CED"],
+                columns=["__id", "__shade", "CE", "IL", "PIL", "PIL%", "DIL", "DO",
+                         "CON", "CT", "IE", "CC", "AE", "SA", "CED"],
             )
-
-            # Sombreado por bloque de CE: alterna un tono suave para cada criterio,
-            # así se distinguen los grupos de indicadores (solo pinta las columnas
-            # no editables: IL, PIL%, CED).
             _ce_seq = list(dict.fromkeys(r["CE"] for r in st.session_state.il_rows))
             _ce_shade = {ce: (i % 2 == 1) for i, ce in enumerate(_ce_seq)}
+            il_df["__shade"] = il_df["CE"].map(lambda c: bool(_ce_shade.get(c)))
 
-            def _shade_row(row):
-                bg = "background-color: #f0ecfa" if _ce_shade.get(row["CE"]) else ""
-                return [bg] * len(row)
-
-            il_styled = il_df.style.apply(_shade_row, axis=1)
-
-            il_edited = st.data_editor(
-                il_styled,
-                num_rows="dynamic",
-                use_container_width=True,
-                height=420,
-                column_config={
-                    "CE": st.column_config.SelectboxColumn("CE", options=ce_col_opts, required=True, width="small"),
-                    "IL": st.column_config.TextColumn("IL", disabled=True, width="small"),
-                    "PIL": st.column_config.NumberColumn("PIL", min_value=0, step=1, width="small"),
-                    "PIL%": st.column_config.NumberColumn("PIL%", disabled=True, format="%.1f%%", width="small"),
-                    "DIL": st.column_config.TextColumn("DIL", width="medium"),
-                    "DO": st.column_config.TextColumn("DO", width="medium"),
-                    "CON": st.column_config.TextColumn("CON", width="small"),
-                    "CT": st.column_config.TextColumn("CT", width="small"),
-                    "IE": st.column_config.SelectboxColumn("IE", options=_with_existing(aux.get("IE", []), "IE"), width="small"),
-                    "CC": st.column_config.SelectboxColumn("CC", options=_with_existing(aux.get("CC", []), "CC"), width="small"),
-                    "AE": st.column_config.SelectboxColumn("AE", options=_with_existing(aux.get("AE", []), "AE"), width="small"),
-                    "SA": st.column_config.SelectboxColumn("SA", options=sa_col_opts, width="small"),
-                    "CED": st.column_config.TextColumn("CED (auto)", disabled=True, width="small"),
-                },
+            _sel_editor = {"values": ce_col_opts}
+            gb = GridOptionsBuilder.from_dataframe(il_df)
+            gb.configure_default_column(editable=True, resizable=True, sortable=False, filter=False)
+            gb.configure_column("__id", hide=True)
+            gb.configure_column("__shade", hide=True)
+            gb.configure_column("CE", width=80, cellEditor="agSelectCellEditor", cellEditorParams=_sel_editor)
+            gb.configure_column("IL", editable=False, width=80)
+            gb.configure_column(
+                "PIL", width=80, type=["numericColumn"],
+                valueFormatter=JsCode(
+                    "function(p){return p.value===''||p.value==null?'':Number(p.value).toFixed(2)}"
+                ),
+            )
+            gb.configure_column(
+                "PIL%", editable=False, width=90,
+                valueFormatter=JsCode(
+                    "function(p){return p.value==null?'':Number(p.value).toFixed(2)+' %'}"
+                ),
+            )
+            gb.configure_column("DIL", width=260)
+            gb.configure_column("DO", width=200)
+            gb.configure_column("CON", width=140)
+            gb.configure_column("CT", width=90)
+            gb.configure_column("IE", width=150, cellEditor="agSelectCellEditor",
+                                cellEditorParams={"values": _with_existing(aux.get("IE", []), "IE")})
+            gb.configure_column("CC", width=140, cellEditor="agSelectCellEditor",
+                                cellEditorParams={"values": _with_existing(aux.get("CC", []), "CC")})
+            gb.configure_column("AE", width=80, cellEditor="agSelectCellEditor",
+                                cellEditorParams={"values": _with_existing(aux.get("AE", []), "AE")})
+            gb.configure_column("SA", width=70, cellEditor="agSelectCellEditor",
+                                cellEditorParams={"values": [str(x) for x in sa_col_opts]})
+            gb.configure_column("CED", editable=False, width=220)
+            gb.configure_selection("multiple", use_checkbox=True, header_checkbox=True)
+            gb.configure_grid_options(
+                getRowStyle=JsCode(
+                    "function(p){return (p.data && p.data.__shade) "
+                    "? {'background-color':'#ece6f9'} : null}"
+                ),
+                rowHeight=30,
             )
 
-            il_raw = [
-                {
-                    "CE": "" if pd.isna(r["CE"]) else str(r["CE"]),
+            grid = AgGrid(
+                il_df,
+                gridOptions=gb.build(),
+                update_mode=GridUpdateMode.MODEL_CHANGED,
+                allow_unsafe_jscode=True,
+                fit_columns_on_grid_load=False,
+                height=430,
+                theme="balham",
+                key=f"il_grid_{st.session_state.il_nonce}",
+            )
+
+            grid_df = pd.DataFrame(grid["data"])
+            sel = grid["selected_rows"]
+            sel_ids = set()
+            if sel is not None:
+                sel_records = sel.to_dict("records") if isinstance(sel, pd.DataFrame) else sel
+                sel_ids = {int(s["__id"]) for s in sel_records if s.get("__id") is not None}
+
+            def _parse(r):
+                return {
+                    "CE": "" if pd.isna(r["CE"]) else str(r["CE"]).strip(),
                     "CED": "", "IL": "",
-                    "PIL": None if pd.isna(r["PIL"]) else float(r["PIL"]),
+                    "PIL": None if r["PIL"] in (None, "") or pd.isna(r["PIL"]) else float(r["PIL"]),
                     "DIL": "" if pd.isna(r["DIL"]) else str(r["DIL"]),
                     "DO": "" if pd.isna(r["DO"]) else str(r["DO"]),
                     "CON": "" if pd.isna(r["CON"]) else str(r["CON"]),
@@ -422,13 +475,18 @@ elif page == "Diseño de la programación":
                     "IE": "" if pd.isna(r["IE"]) else str(r["IE"]),
                     "CC": "" if pd.isna(r["CC"]) else str(r["CC"]),
                     "AE": "" if pd.isna(r["AE"]) else str(r["AE"]),
-                    "SA": None if pd.isna(r["SA"]) else int(r["SA"]),
+                    "SA": None if r["SA"] in (None, "") or pd.isna(r["SA"]) else int(float(r["SA"])),
                 }
-                for _, r in il_edited.iterrows()
+
+            il_raw = [
+                _parse(r)
+                for _, r in grid_df.iterrows()
+                if not (del_click and int(r["__id"]) in sel_ids)
             ]
             il_new = il_recompute(il_raw, ce_ced, ce_list)
-            if _il_sig(il_new) != _il_sig(st.session_state.il_rows):
+            if del_click or _il_sig(il_new) != _il_sig(st.session_state.il_rows):
                 st.session_state.il_rows = il_new
+                st.session_state.il_nonce += 1
                 st.session_state.pop("prog_out", None)
                 st.rerun()
 
