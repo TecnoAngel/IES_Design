@@ -32,15 +32,14 @@ def _color_hex(i: int) -> str:
 
 def hsa_share(situaciones: list[Situacion]) -> list[dict]:
     """Devuelve, por cada SA con horas > 0, su nº, descripción, evaluación,
-    horas y porcentaje sobre el total de horas. Ordenado por nº de SA (como la
-    tabla dinámica del Excel)."""
+    horas y porcentaje sobre el total de horas. Se respeta el orden en que
+    están en la tabla (el orden en que las metió el profesor)."""
     filas = [
         s
         for s in situaciones
         if s.hsa not in (None, "", 0) and float(s.hsa) > 0
     ]
     total = sum(float(s.hsa) for s in filas)
-    filas.sort(key=lambda s: (s.sa is None, s.sa if s.sa is not None else 0))
 
     out: list[dict] = []
     for i, s in enumerate(filas):
@@ -143,49 +142,41 @@ def _table_html(shares: list[dict]) -> str:
     )
 
 
-_COPY_TEMPLATE = r"""
-<div style="font-family:Segoe UI,Arial,sans-serif;color:#222;color-scheme:light;">
+# Botón pequeño y discreto, sin emojis, para incrustar justo al lado del elemento.
+_MINI_BUTTON = r"""
+<div style="font-family:Segoe UI,Arial,sans-serif;color-scheme:light;">
   <style>
-    #si-wrap { color-scheme: light; }
-    #si-wrap button {
-      border:none; border-radius:8px; padding:9px 14px; margin:0 8px 8px 0;
-      cursor:pointer; font-size:13px; font-weight:600; color:#fff;
-      background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+    .si-mini {
+      border:1px solid #c9c9d6; background:#fff; color:#444; border-radius:5px;
+      padding:2px 9px; cursor:pointer; font-size:11px; line-height:1.6;
     }
-    #si-wrap button:hover { opacity:.9; }
-    #si-wrap button.si-ok { background:#2e7d32; }
-    #si-msg { font-size:12px; color:#2e7d32; margin-left:4px; }
-    #si-table-preview {
-      margin-top:10px; max-height:260px; overflow:auto; border:1px solid #e3e3ef;
-      border-radius:8px; padding:8px; background:#fff;
-    }
+    .si-mini:hover { background:#f2f2fb; }
+    .si-mini.si-ok { border-color:#2e7d32; color:#2e7d32; }
+    .si-note { font-size:11px; margin-left:6px; color:#777; }
   </style>
-  <div id="si-wrap">
-    <button type="button" id="si-btn-table" onclick="siCopyTable()">📋 Copiar tabla (para Word)</button>
-    <button type="button" id="si-btn-img" onclick="siCopyImg()">🖼️ Copiar gráfico (para Word)</button>
-    <span id="si-msg"></span>
-    <div id="si-table-preview">__TABLE_HTML__</div>
-  </div>
-</div>
+  <button type="button" class="si-mini" id="__BTN_ID__" onclick="__FN__()">__LABEL__</button>
+  <span class="si-note" id="__BTN_ID__-note"></span>
 <script>
-  var SI_TABLE_HTML = __TABLE_JSON__;
-  var SI_IMG_B64 = "__IMG_B64__";
-
-  function siFlash(btnId, okText) {
-    var btn = document.getElementById(btnId);
-    var original = btn.textContent;
-    btn.textContent = okText; btn.classList.add('si-ok');
-    setTimeout(function () { btn.textContent = original; btn.classList.remove('si-ok'); }, 1600);
+  function __FN__() {
+    var btn = document.getElementById("__BTN_ID__");
+    var note = document.getElementById("__BTN_ID__-note");
+    var done = function (okText, noteText, okColor) {
+      var original = btn.textContent;
+      btn.textContent = okText; btn.classList.add("si-ok");
+      note.textContent = noteText || ""; note.style.color = okColor || "#777";
+      setTimeout(function () {
+        btn.textContent = original; btn.classList.remove("si-ok"); note.textContent = "";
+      }, 1800);
+    };
+    __BODY__
   }
-  function siMsg(text, color) {
-    var m = document.getElementById('si-msg');
-    m.textContent = text; m.style.color = color || '#2e7d32';
-    setTimeout(function () { m.textContent = ''; }, 2600);
-  }
+</script>
+</div>
+"""
 
-  function siCopyTable() {
+_TABLE_BODY = r"""
     var container = document.createElement('div');
-    container.innerHTML = SI_TABLE_HTML;
+    container.innerHTML = __TABLE_JSON__;
     container.style.position = 'fixed'; container.style.left = '-9999px';
     document.body.appendChild(container);
     var range = document.createRange();
@@ -195,35 +186,40 @@ _COPY_TEMPLATE = r"""
     var ok = false;
     try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
     sel.removeAllRanges(); document.body.removeChild(container);
-    if (ok) { siFlash('si-btn-table', '✓ Tabla copiada'); siMsg('Pega en Word con Ctrl+V.'); }
-    else { siMsg('No se ha podido copiar la tabla.', '#c62828'); }
-  }
+    if (ok) { done('Copiada', 'pega en Word con Ctrl+V'); }
+    else { done('Error', 'no se pudo copiar', '#c62828'); }
+"""
 
-  function siB64ToBlob(b64, mime) {
-    var bin = atob(b64); var len = bin.length; var bytes = new Uint8Array(len);
-    for (var i = 0; i < len; i++) { bytes[i] = bin.charCodeAt(i); }
-    return new Blob([bytes], { type: mime });
-  }
-
-  function siCopyImg() {
-    var blob = siB64ToBlob(SI_IMG_B64, 'image/png');
+_IMG_BODY = r"""
+    var b64 = "__IMG_B64__";
+    var bin = atob(b64); var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) { bytes[i] = bin.charCodeAt(i); }
+    var blob = new Blob([bytes], { type: 'image/png' });
     if (!navigator.clipboard || !window.ClipboardItem) {
-      siMsg('Tu navegador no deja copiar imágenes; usa el botón de descarga.', '#c62828');
-      return;
+      done('Error', 'usa "Descargar PNG"', '#c62828'); return;
     }
     navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(
-      function () { siFlash('si-btn-img', '✓ Gráfico copiado'); siMsg('Pega en Word con Ctrl+V.'); },
-      function () { siMsg('No se ha podido copiar el gráfico; usa el botón de descarga.', '#c62828'); }
+      function () { done('Copiado', 'pega en Word con Ctrl+V'); },
+      function () { done('Error', 'usa "Descargar PNG"', '#c62828'); }
     );
-  }
-</script>
 """
 
 
-def build_copy_component_html(shares: list[dict], png_bytes: bytes) -> str:
-    table_html = _table_html(shares)
-    out = _COPY_TEMPLATE
-    out = out.replace("__TABLE_HTML__", table_html)
-    out = out.replace("__TABLE_JSON__", json.dumps(table_html))
-    out = out.replace("__IMG_B64__", base64.b64encode(png_bytes).decode("ascii"))
-    return out
+def build_table_copy_html(shares: list[dict]) -> str:
+    body = _TABLE_BODY.replace("__TABLE_JSON__", json.dumps(_table_html(shares)))
+    return (
+        _MINI_BUTTON.replace("__BTN_ID__", "si-copy-table")
+        .replace("__FN__", "siCopyTable")
+        .replace("__LABEL__", "Copiar tabla")
+        .replace("__BODY__", body)
+    )
+
+
+def build_image_copy_html(png_bytes: bytes) -> str:
+    body = _IMG_BODY.replace("__IMG_B64__", base64.b64encode(png_bytes).decode("ascii"))
+    return (
+        _MINI_BUTTON.replace("__BTN_ID__", "si-copy-img")
+        .replace("__FN__", "siCopyImg")
+        .replace("__LABEL__", "Copiar gráfico")
+        .replace("__BODY__", body)
+    )

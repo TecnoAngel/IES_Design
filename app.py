@@ -138,20 +138,17 @@ elif page == "Situaciones de aprendizaje":
         st.info("Sube el Excel para empezar a editar.")
     elif "sa_df" in st.session_state:
         from tools.situaciones_informe import (
-            build_copy_component_html,
+            build_image_copy_html,
             build_pie_png,
+            build_table_copy_html,
             hsa_share,
         )
 
-        st.divider()
-        st.markdown("### Situaciones de aprendizaje")
-        st.caption(
-            "SA = nº de situación · EV = evaluación/trimestre (1, 2 o 3) · "
-            "DSA = descripción · HSA = horas previstas para la situación."
-        )
+        # Contenedor reservado arriba del todo: se rellena con la calculadora de
+        # horas una vez que ya conocemos los datos editados.
+        calc_box = st.container()
 
         col_edit, col_side = st.columns([3, 2], gap="large")
-
         with col_edit:
             edited = st.data_editor(
                 st.session_state.sa_df,
@@ -160,9 +157,9 @@ elif page == "Situaciones de aprendizaje":
                 key="sa_editor",
                 column_config={
                     "SA": st.column_config.NumberColumn("SA (nº)", min_value=1, step=1, format="%d"),
-                    "EV": st.column_config.SelectboxColumn("EV (trimestre)", options=list(TRIMESTRES)),
+                    "EV": st.column_config.SelectboxColumn("EV (trim.)", options=list(TRIMESTRES)),
                     "DSA": st.column_config.TextColumn("Descripción", width="large"),
-                    "HSA": st.column_config.NumberColumn("Horas (HSA)", min_value=0, step=1, format="%d"),
+                    "HSA": st.column_config.NumberColumn("Horas", min_value=0, step=1, format="%d"),
                 },
             )
 
@@ -180,14 +177,23 @@ elif page == "Situaciones de aprendizaje":
         pie_png = build_pie_png(shares)
 
         with col_side:
-            st.markdown("**Reparto de horas sobre el total**")
             if shares:
                 st.image(pie_png, use_container_width=True)
+                bcol1, bcol2 = st.columns(2)
+                with bcol1:
+                    components.html(build_image_copy_html(pie_png), height=40)
+                with bcol2:
+                    st.download_button(
+                        "Descargar PNG",
+                        data=pie_png,
+                        file_name="reparto_horas_SA.png",
+                        mime="image/png",
+                        use_container_width=True,
+                    )
             else:
                 st.caption("Añade situaciones con horas para ver el gráfico de sectores.")
 
-        # Tabla con el % de horas de cada SA sobre el total (como la dinámica de INFORMES).
-        st.markdown("#### % de horas por situación")
+        # Tabla del % de horas de cada SA sobre el total (como la dinámica de INFORMES).
         pct_df = pd.DataFrame(
             [
                 {
@@ -210,19 +216,7 @@ elif page == "Situaciones de aprendizaje":
                 ),
             },
         )
-
-        st.markdown("##### Copiar para Word")
-        st.caption(
-            "«Copiar tabla» pega en Word una tabla con SA, descripción, evaluación, "
-            "horas y %. «Copiar gráfico» pega el gráfico de sectores como imagen."
-        )
-        components.html(build_copy_component_html(shares, pie_png), height=430, scrolling=True)
-        st.download_button(
-            "Descargar gráfico (PNG)",
-            data=pie_png,
-            file_name="reparto_horas_SA.png",
-            mime="image/png",
-        )
+        components.html(build_table_copy_html(shares), height=40)
 
         # Validaciones
         errores = []
@@ -240,49 +234,44 @@ elif page == "Situaciones de aprendizaje":
         if duplicados:
             errores.append(f"Hay números de situación repetidos: {duplicados}.")
 
-        # Panel de horas: previstas vs acumuladas
-        st.divider()
-        st.markdown("### Horas por trimestre")
-        st.caption(
-            "Las horas previstas se toman del propio Excel; ajústalas a mano si quieres. "
-            "(Calcularlas desde el calendario oficial de Castilla y León, como en IES Creator, "
-            "queda para el siguiente paso.)"
-        )
-
+        # Calculadora de horas por trimestre (compacta, arriba del todo).
         sits_para_calculo = sits
         acumulado = acumulado_por_trimestre(sits_para_calculo)
-
-        prev_cols = st.columns(3)
         previstas = {}
-        for col, tri in zip(prev_cols, TRIMESTRES):
-            with col:
-                previstas[tri] = st.number_input(
-                    f"{tri}º trimestre — horas previstas",
-                    min_value=0.0,
-                    step=1.0,
-                    value=float(st.session_state.sa_previstas.get(tri, 0.0)),
-                    key=f"sa_prev_{tri}",
+        with calc_box:
+            st.caption("Horas por trimestre — previstas (editables), planificadas (Σ HSA) y desviación")
+            cc = st.columns([1, 1, 1, 1.3])
+            for col, tri in zip(cc[:3], TRIMESTRES):
+                with col:
+                    previstas[tri] = st.number_input(
+                        f"{tri}º trim. previstas",
+                        min_value=0.0,
+                        step=1.0,
+                        value=float(st.session_state.sa_previstas.get(tri, 0.0)),
+                        key=f"sa_prev_{tri}",
+                        label_visibility="visible",
+                    )
+                    acc = acumulado.get(tri, 0.0)
+                    desv = previstas[tri] - acc
+                    color = "#c62828" if desv < 0 else "#2e7d32"
+                    st.markdown(
+                        f"<div style='font-size:11px;margin-top:-10px'>plan. <b>{acc:g} h</b> · "
+                        f"<span style='color:{color}'>desv. {desv:+g} h</span></div>",
+                        unsafe_allow_html=True,
+                    )
+            total_prev = sum(previstas.values())
+            total_acc = sum(acumulado.values())
+            tcolor = "#c62828" if total_prev - total_acc < 0 else "#2e7d32"
+            with cc[3]:
+                st.markdown(
+                    f"<div style='font-size:12px;margin-top:8px'><b>Curso</b><br>"
+                    f"{total_acc:g} / {total_prev:g} h "
+                    f"<span style='color:{tcolor}'>({total_prev - total_acc:+g} h)</span></div>",
+                    unsafe_allow_html=True,
                 )
-                acc = acumulado.get(tri, 0.0)
-                desv = previstas[tri] - acc
-                st.metric(
-                    "Acumulado (suma HSA)",
-                    f"{acc:g} h",
-                    delta=f"{desv:+g} h de desviación",
-                    delta_color="normal" if desv >= 0 else "inverse",
-                )
-                if desv < 0:
-                    st.error(f"Te pasas {abs(desv):g} h en el {tri}º trimestre.")
-
-        total_prev = sum(previstas.values())
-        total_acc = sum(acumulado.values())
-        st.markdown(
-            f"**Total curso:** {total_acc:g} h planificadas de {total_prev:g} h previstas "
-            f"(**{total_prev - total_acc:+g} h**)."
-        )
+            st.divider()
 
         # Guardar
-        st.divider()
         col1, col2 = st.columns([2, 1])
         with col1:
             if st.button("Guardar y preparar descarga", use_container_width=True, type="primary", key="btn_save_sa"):
