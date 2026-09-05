@@ -116,55 +116,70 @@ page = st.segmented_control(
     label_visibility="collapsed",
 )
 
+# ── Barra global del Excel de programación: cargar / descargar desde cualquier
+#    pestaña. La descarga se rellena luego (dl_box), cuando la pestaña activa ya
+#    ha calculado los cambios.
+from tools.indicadores_logro import read_indicadores
+from tools.indicadores_logro import recompute as il_recompute
+from tools.situaciones_aprendizaje import TRIMESTRES, read_situaciones
+
+SA_COLS = ["SA", "EV", "DSA", "HSA"]
+IL_COLS = ["CE", "CED", "IL", "PIL", "PIL%", "DIL", "DO", "CON", "CT", "IE", "CC", "AE", "SA"]
+
+with st.container(border=True):
+    ubar1, ubar2 = st.columns([3, 2])
+    with ubar1:
+        prog_excel = st.file_uploader(
+            "Excel de programación (.xlsx)",
+            type=["xlsx", "xlsm"],
+            key="prog_excel_uploader",
+            label_visibility="collapsed",
+        )
+    dl_box = ubar2.container()
+
+if prog_excel is not None and st.session_state.get("prog_loaded_name") != prog_excel.name:
+    try:
+        _sa = read_situaciones(prog_excel)
+        st.session_state.sa_df = pd.DataFrame(
+            [[s.sa, s.ev, s.dsa, s.hsa] for s in _sa.situaciones], columns=SA_COLS
+        )
+        st.session_state.sa_previstas = {
+            t: float(_sa.horas_previstas.get(t, 0.0)) for t in TRIMESTRES
+        }
+        _il = read_indicadores(prog_excel)
+        st.session_state.il_rows = il_recompute(_il["rows"], _il["ce_ced"])
+        st.session_state.il_ce_list = _il["ce_list"]
+        st.session_state.il_ce_ced = _il["ce_ced"]
+        st.session_state.il_aux = _il["aux"]
+        st.session_state.prog_loaded_name = prog_excel.name
+        st.session_state.pop("prog_out", None)
+    except Exception as exc:
+        st.error(f"No se ha podido leer el Excel: {exc}")
+
 # PÁGINA: INICIO
 if page == "Inicio":
     st.markdown('<div class="panel-card"><h3>Bienvenido</h3><p>Elige una sección arriba para empezar.</p></div>', unsafe_allow_html=True)
 
 # PÁGINA: DISEÑO DE LA PROGRAMACIÓN
 elif page == "Diseño de la programación":
-    st.markdown(
-        '<div class="panel-card"><h3>Diseño de la programación</h3>'
-        "<p>Sube tu copia del Excel de programación y edita sus tablas curriculares "
-        "(situaciones de aprendizaje, indicadores de logro…) sin riesgo de romper el "
-        "libro: el modelo de datos, las tablas dinámicas y el formato condicional se "
-        "conservan y se recalculan al abrirlo.</p></div>",
-        unsafe_allow_html=True,
+    st.caption(
+        "Edita las tablas curriculares del Excel de programación sin romper el libro. "
+        "Carga y descarga el archivo en la barra de arriba."
     )
 
-    from tools.situaciones_aprendizaje import (
-        TRIMESTRES,
-        Situacion,
-        acumulado_por_trimestre,
-        read_situaciones,
-        save_situaciones,
-    )
-
-    COLS = ["SA", "EV", "DSA", "HSA"]
-
-    prog_excel = st.file_uploader(
-        "Excel de programación (.xlsx)",
-        type=["xlsx", "xlsm"],
-        key="prog_excel_uploader",
-    )
-
-    # Al cambiar de archivo, se recargan las tablas desde cero.
-    if prog_excel is not None and st.session_state.get("prog_loaded_name") != prog_excel.name:
-        try:
-            data = read_situaciones(prog_excel)
-            st.session_state.sa_df = pd.DataFrame(
-                [[s.sa, s.ev, s.dsa, s.hsa] for s in data.situaciones], columns=COLS
-            )
-            st.session_state.sa_previstas = {
-                t: float(data.horas_previstas.get(t, 0.0)) for t in TRIMESTRES
-            }
-            st.session_state.prog_loaded_name = prog_excel.name
-            st.session_state.pop("sa_out", None)
-        except Exception as exc:
-            st.error(f"No se ha podido leer el Excel: {exc}")
+    COLS = SA_COLS
 
     if prog_excel is None:
-        st.info("Sube el Excel para empezar a editar.")
+        st.info("Sube el Excel de programación en la barra de arriba para empezar.")
     elif "sa_df" in st.session_state:
+        from io import BytesIO
+
+        from tools.indicadores_logro import save_indicadores
+        from tools.situaciones_aprendizaje import (
+            Situacion,
+            acumulado_por_trimestre,
+            save_situaciones,
+        )
         from tools.situaciones_informe import (
             build_image_copy_html,
             build_pie_png,
@@ -173,12 +188,7 @@ elif page == "Diseño de la programación":
         )
 
         # ───────────────── BLOQUE: SITUACIONES DE APRENDIZAJE ─────────────────
-        st.markdown(
-            '<div class="block-head">Situaciones de aprendizaje'
-            '<span class="block-sub">tabla <code>tablaSAprendizaje</code> · '
-            "reparto de horas y control de desviación por trimestre</span></div>",
-            unsafe_allow_html=True,
-        )
+        st.markdown('<div class="block-head">Situaciones de aprendizaje</div>', unsafe_allow_html=True)
 
         with st.container(border=True):
             # Contenedor reservado arriba del bloque: la calculadora de horas se
@@ -313,46 +323,146 @@ elif page == "Diseño de la programación":
                     )
 
             if errores:
-                st.warning("Avisos:\n\n- " + "\n- ".join(errores))
-
-            gcol1, gcol2 = st.columns([2, 1])
-            with gcol1:
-                if st.button("Guardar y preparar descarga", use_container_width=True, type="primary", key="btn_save_sa"):
-                    if errores:
-                        st.error("Corrige los avisos antes de guardar.")
-                    else:
-                        try:
-                            st.session_state.sa_out = save_situaciones(prog_excel, sits, previstas)
-                            st.success("Excel actualizado. Descárgalo abajo.")
-                        except Exception as exc:
-                            st.error(f"Error al generar el Excel: {exc}")
-            with gcol2:
-                if st.button("Descartar cambios", use_container_width=True, key="btn_reset_sa"):
-                    for k in ("sa_df", "sa_previstas", "prog_loaded_name", "sa_out"):
-                        st.session_state.pop(k, None)
-                    st.rerun()
-
-            if st.session_state.get("sa_out"):
-                nombre = prog_excel.name.rsplit(".", 1)[0] + "_actualizado.xlsx"
-                st.download_button(
-                    "Descargar Excel actualizado",
-                    data=st.session_state.sa_out,
-                    file_name=nombre,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                )
+                st.warning("Situaciones — avisos:\n\n- " + "\n- ".join(errores))
 
         # ───────────────── BLOQUE: INDICADORES DE LOGRO ─────────────────
-        st.markdown(
-            '<div class="block-head">Indicadores de logro'
-            '<span class="block-sub">tabla <code>TablaIndicadoresLogro</code> · en construcción</span></div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<div class="block-head">Indicadores de logro</div>', unsafe_allow_html=True)
+
+        ce_list = st.session_state.il_ce_list
+        ce_ced = st.session_state.il_ce_ced
+        aux = st.session_state.il_aux
+        sa_options = sorted({s.sa for s in sits if s.sa})
+
+        def _with_existing(options, key):
+            # Los SelectboxColumn de Streamlit fallan si una celda tiene un valor
+            # que no está en las opciones; añadimos los valores ya presentes al
+            # final para que la tabla no reviente (las validaciones ya avisan).
+            extra = [
+                r[key]
+                for r in st.session_state.il_rows
+                if r[key] not in (None, "") and r[key] not in options
+            ]
+            return list(options) + list(dict.fromkeys(extra))
+
+        ce_col_opts = _with_existing(ce_list, "CE")
+        sa_col_opts = _with_existing(sa_options, "SA")
+
+        def _il_sig(rows):
+            return [
+                (
+                    r["CE"], r["IL"],
+                    (None if r["PIL"] in (None, "") else float(r["PIL"])),
+                    r["DIL"], r["DO"], r["CON"], r["CT"], r["IE"], r["CC"], r["AE"],
+                    (None if r["SA"] in (None, "") else int(r["SA"])),
+                )
+                for r in rows
+            ]
+
         with st.container(border=True):
-            st.caption(
-                "Aquí irá el editor de la tabla de indicadores de logro (CE, IL, pesos…), "
-                "con el mismo esquema: editar filas y guardar sin romper el Excel."
+            st.markdown(
+                '<div class="mini-label">CE se elige de la lista · CED e IL (4.2.1, 4.2.2…) '
+                "son automáticos · PIL a mano, PIL% automático · SA solo entre las de arriba</div>",
+                unsafe_allow_html=True,
             )
+
+            il_df = pd.DataFrame(
+                [
+                    {
+                        "CE": r["CE"], "IL": r["IL"], "PIL": r["PIL"],
+                        "PIL%": r["PIL%"] * 100,
+                        "DIL": r["DIL"], "DO": r["DO"], "CON": r["CON"], "CT": r["CT"],
+                        "IE": r["IE"], "CC": r["CC"], "AE": r["AE"], "SA": r["SA"],
+                        "CED": r["CED"],
+                    }
+                    for r in st.session_state.il_rows
+                ],
+                columns=["CE", "IL", "PIL", "PIL%", "DIL", "DO", "CON", "CT", "IE", "CC", "AE", "SA", "CED"],
+            )
+
+            il_edited = st.data_editor(
+                il_df,
+                num_rows="dynamic",
+                use_container_width=True,
+                height=420,
+                column_config={
+                    "CE": st.column_config.SelectboxColumn("CE", options=ce_col_opts, required=True, width="small"),
+                    "IL": st.column_config.TextColumn("IL", disabled=True, width="small"),
+                    "PIL": st.column_config.NumberColumn("PIL", min_value=0, step=1, width="small"),
+                    "PIL%": st.column_config.NumberColumn("PIL%", disabled=True, format="%.1f%%", width="small"),
+                    "DIL": st.column_config.TextColumn("DIL", width="medium"),
+                    "DO": st.column_config.TextColumn("DO", width="medium"),
+                    "CON": st.column_config.TextColumn("CON", width="small"),
+                    "CT": st.column_config.TextColumn("CT", width="small"),
+                    "IE": st.column_config.SelectboxColumn("IE", options=_with_existing(aux.get("IE", []), "IE"), width="small"),
+                    "CC": st.column_config.SelectboxColumn("CC", options=_with_existing(aux.get("CC", []), "CC"), width="small"),
+                    "AE": st.column_config.SelectboxColumn("AE", options=_with_existing(aux.get("AE", []), "AE"), width="small"),
+                    "SA": st.column_config.SelectboxColumn("SA", options=sa_col_opts, width="small"),
+                    "CED": st.column_config.TextColumn("CED (auto)", disabled=True, width="small"),
+                },
+            )
+
+            il_raw = [
+                {
+                    "CE": "" if pd.isna(r["CE"]) else str(r["CE"]),
+                    "CED": "", "IL": "",
+                    "PIL": None if pd.isna(r["PIL"]) else float(r["PIL"]),
+                    "DIL": "" if pd.isna(r["DIL"]) else str(r["DIL"]),
+                    "DO": "" if pd.isna(r["DO"]) else str(r["DO"]),
+                    "CON": "" if pd.isna(r["CON"]) else str(r["CON"]),
+                    "CT": "" if pd.isna(r["CT"]) else str(r["CT"]),
+                    "IE": "" if pd.isna(r["IE"]) else str(r["IE"]),
+                    "CC": "" if pd.isna(r["CC"]) else str(r["CC"]),
+                    "AE": "" if pd.isna(r["AE"]) else str(r["AE"]),
+                    "SA": None if pd.isna(r["SA"]) else int(r["SA"]),
+                }
+                for _, r in il_edited.iterrows()
+            ]
+            il_new = il_recompute(il_raw, ce_ced)
+            if _il_sig(il_new) != _il_sig(st.session_state.il_rows):
+                st.session_state.il_rows = il_new
+                st.session_state.pop("prog_out", None)
+                st.rerun()
+
+            il_errores = []
+            for i, r in enumerate(st.session_state.il_rows, start=1):
+                if not r["CE"]:
+                    il_errores.append(f"Fila {i}: falta el criterio (CE).")
+                elif r["CE"] not in ce_ced:
+                    il_errores.append(f"Fila {i}: el criterio {r['CE']} no existe en la tabla de criterios.")
+                if r["SA"] not in (None, "") and int(r["SA"]) not in sa_options:
+                    il_errores.append(
+                        f"Fila {i}: la SA {r['SA']} no está en la tabla de situaciones de aprendizaje."
+                    )
+            if il_errores:
+                st.warning("Indicadores — avisos:\n\n- " + "\n- ".join(il_errores))
+
+        # ───────────────── DESCARGA GLOBAL (barra de arriba) ─────────────────
+        with dl_box:
+            if st.button("Guardar Excel", type="primary", use_container_width=True, key="btn_save_all"):
+                probs = errores + il_errores
+                if probs:
+                    st.session_state.prog_msg = "Corrige los avisos antes de guardar."
+                    st.session_state.pop("prog_out", None)
+                else:
+                    try:
+                        _data = save_situaciones(prog_excel, sits, previstas)
+                        _data = save_indicadores(BytesIO(_data), st.session_state.il_rows, ce_ced)
+                        st.session_state.prog_out = _data
+                        st.session_state.prog_msg = ""
+                    except Exception as exc:
+                        st.session_state.prog_msg = f"Error al generar el Excel: {exc}"
+                        st.session_state.pop("prog_out", None)
+            if st.session_state.get("prog_msg"):
+                st.caption(f"⚠️ {st.session_state.prog_msg}")
+            if st.session_state.get("prog_out"):
+                st.download_button(
+                    "Descargar .xlsx",
+                    data=st.session_state.prog_out,
+                    file_name=prog_excel.name.rsplit(".", 1)[0] + "_actualizado.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="dlb_prog",
+                )
 
 # PÁGINA: LOMLOE
 elif page == "LOMLOE":
