@@ -28,10 +28,15 @@ o `run_app.bat` (usa el puerto 8502 para no chocar con IES Creator).
 
 - **Situaciones de aprendizaje**: editor tipo hoja de cálculo (añadir / quitar /
   modificar filas) de la tabla `tablaSAprendizaje` de la hoja
-  `SituacionesAprendizaje`, con panel de horas previstas vs. acumuladas por
-  trimestre y aviso si te pasas. Al guardar se reescriben **solo** las partes
-  mínimas del `.xlsx` (edición quirúrgica sobre el ZIP), conservando intactos el
-  modelo de Power Pivot, las tablas dinámicas y el formato condicional.
+  `SituacionesAprendizaje`, con:
+  - panel de horas previstas vs. acumuladas por trimestre y aviso si te pasas;
+  - tabla y gráfico de sectores del % de horas de cada SA sobre el total
+    (equivalente a la tabla dinámica de la hoja INFORMES), con botones para
+    copiar tabla y gráfico y pegarlos en Word.
+
+  Al guardar se reescriben **solo** las partes mínimas del `.xlsx` (edición
+  quirúrgica sobre el ZIP), conservando intactos el modelo de Power Pivot, las
+  tablas dinámicas y el formato condicional.
 - **Programación de aula**: genera el documento Word de la programación de aula a
   partir de un Excel con los datos del grupo y las situaciones de aprendizaje.
 

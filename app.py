@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 ROOT = Path(__file__).resolve().parent
 sys.path.append(str(ROOT))
@@ -136,6 +137,12 @@ elif page == "Situaciones de aprendizaje":
     if sa_excel is None:
         st.info("Sube el Excel para empezar a editar.")
     elif "sa_df" in st.session_state:
+        from tools.situaciones_informe import (
+            build_copy_component_html,
+            build_pie_png,
+            hsa_share,
+        )
+
         st.divider()
         st.markdown("### Situaciones de aprendizaje")
         st.caption(
@@ -143,22 +150,82 @@ elif page == "Situaciones de aprendizaje":
             "DSA = descripción · HSA = horas previstas para la situación."
         )
 
-        edited = st.data_editor(
-            st.session_state.sa_df,
-            num_rows="dynamic",
+        col_edit, col_side = st.columns([3, 2], gap="large")
+
+        with col_edit:
+            edited = st.data_editor(
+                st.session_state.sa_df,
+                num_rows="dynamic",
+                use_container_width=True,
+                key="sa_editor",
+                column_config={
+                    "SA": st.column_config.NumberColumn("SA (nº)", min_value=1, step=1, format="%d"),
+                    "EV": st.column_config.SelectboxColumn("EV (trimestre)", options=list(TRIMESTRES)),
+                    "DSA": st.column_config.TextColumn("Descripción", width="large"),
+                    "HSA": st.column_config.NumberColumn("Horas (HSA)", min_value=0, step=1, format="%d"),
+                },
+            )
+
+        filas = [r for _, r in edited.iterrows() if not r[COLS].isna().all()]
+        sits = [
+            Situacion(
+                sa=None if pd.isna(r["SA"]) else int(r["SA"]),
+                ev=None if pd.isna(r["EV"]) else int(r["EV"]),
+                dsa=str(r["DSA"] or ""),
+                hsa=None if pd.isna(r["HSA"]) else float(r["HSA"]),
+            )
+            for r in filas
+        ]
+        shares = hsa_share(sits)
+        pie_png = build_pie_png(shares)
+
+        with col_side:
+            st.markdown("**Reparto de horas sobre el total**")
+            if shares:
+                st.image(pie_png, use_container_width=True)
+            else:
+                st.caption("Añade situaciones con horas para ver el gráfico de sectores.")
+
+        # Tabla con el % de horas de cada SA sobre el total (como la dinámica de INFORMES).
+        st.markdown("#### % de horas por situación")
+        pct_df = pd.DataFrame(
+            [
+                {
+                    "SA": s["sa"],
+                    "Situación de aprendizaje": s["dsa"],
+                    "Ev.": s["ev"],
+                    "Horas": s["horas"],
+                    "% sobre el total": s["pct"] * 100,
+                }
+                for s in shares
+            ]
+        )
+        st.dataframe(
+            pct_df,
             use_container_width=True,
-            key="sa_editor",
+            hide_index=True,
             column_config={
-                "SA": st.column_config.NumberColumn("SA (nº)", min_value=1, step=1, format="%d"),
-                "EV": st.column_config.SelectboxColumn("EV (trimestre)", options=list(TRIMESTRES)),
-                "DSA": st.column_config.TextColumn("Descripción", width="large"),
-                "HSA": st.column_config.NumberColumn("Horas (HSA)", min_value=0, step=1, format="%d"),
+                "% sobre el total": st.column_config.ProgressColumn(
+                    "% sobre el total", format="%.2f%%", min_value=0, max_value=100
+                ),
             },
+        )
+
+        st.markdown("##### Copiar para Word")
+        st.caption(
+            "«Copiar tabla» pega en Word una tabla con SA, descripción, evaluación, "
+            "horas y %. «Copiar gráfico» pega el gráfico de sectores como imagen."
+        )
+        components.html(build_copy_component_html(shares, pie_png), height=430, scrolling=True)
+        st.download_button(
+            "Descargar gráfico (PNG)",
+            data=pie_png,
+            file_name="reparto_horas_SA.png",
+            mime="image/png",
         )
 
         # Validaciones
         errores = []
-        filas = [r for _, r in edited.iterrows() if not r[COLS].isna().all()]
         for i, r in enumerate(filas, start=1):
             if pd.isna(r["SA"]):
                 errores.append(f"Fila {i}: falta el nº de situación (SA).")
@@ -182,15 +249,7 @@ elif page == "Situaciones de aprendizaje":
             "queda para el siguiente paso.)"
         )
 
-        sits_para_calculo = [
-            Situacion(
-                sa=None if pd.isna(r["SA"]) else int(r["SA"]),
-                ev=None if pd.isna(r["EV"]) else int(r["EV"]),
-                dsa=str(r["DSA"] or ""),
-                hsa=None if pd.isna(r["HSA"]) else float(r["HSA"]),
-            )
-            for r in filas
-        ]
+        sits_para_calculo = sits
         acumulado = acumulado_por_trimestre(sits_para_calculo)
 
         prev_cols = st.columns(3)
