@@ -157,10 +157,36 @@ def read_indicadores(source: Any) -> dict:
     return {"rows": rows, "ce_list": ce_list, "ce_ced": ce_ced, "aux": aux}
 
 
-def recompute(rows: list[dict], ce_ced: dict[str, str]) -> list[dict]:
-    """Rellena CED (lookup por CE), numera IL correlativo dentro de cada CE en el
-    orden en que aparecen las filas, y calcula PIL% = PIL / ΣPIL del CE."""
+def recompute(
+    rows: list[dict],
+    ce_ced: dict[str, str],
+    ce_order: list[str] | None = None,
+) -> list[dict]:
+    """Agrupa las filas por CE (en el orden de `ce_order`, o de aparición si no se
+    pasa), rellena CED (lookup por CE), numera IL correlativo dentro de cada CE
+    (4.2.1, 4.2.2…) y calcula PIL% = PIL / ΣPIL del CE.
+
+    Al agrupar por CE, una fila nueva de "3.2" se coloca junto a las demás de
+    "3.2" y recibe el siguiente número (3.2.4, 3.2.5…); dentro de un mismo CE se
+    respeta el orden en que estaban las filas."""
     limpio = [r for r in rows if _row_has_content(r)]
+
+    orden = list(ce_order or [])
+    rank_cache: dict[str, int] = {}
+
+    def _rank(ce: str) -> int:
+        if ce in rank_cache:
+            return rank_cache[ce]
+        if ce in orden:
+            rank_cache[ce] = orden.index(ce)
+        elif ce:
+            rank_cache[ce] = len(orden) + len(rank_cache)
+        else:
+            rank_cache[ce] = 10**9  # filas sin CE, al final
+        return rank_cache[ce]
+
+    # sorted() es estable: dentro de un mismo CE se mantiene el orden previo.
+    limpio = sorted(limpio, key=lambda r: _rank(_s(r.get("CE"))))
 
     contador: dict[str, int] = {}
     suma_pil: dict[str, float] = {}
@@ -292,9 +318,14 @@ def _force_full_recalc(workbook_xml: str) -> str:
     return workbook_xml.replace("</workbook>", '<calcPr fullCalcOnLoad="1"/></workbook>')
 
 
-def save_indicadores(source: Any, rows: list[dict], ce_ced: dict[str, str]) -> bytes:
+def save_indicadores(
+    source: Any,
+    rows: list[dict],
+    ce_ced: dict[str, str],
+    ce_order: list[str] | None = None,
+) -> bytes:
     payload = _read_source_bytes(source)
-    rows = recompute(rows, ce_ced)
+    rows = recompute(rows, ce_ced, ce_order)
 
     src = zipfile.ZipFile(BytesIO(payload))
     sheet_path = _find_sheet_path(src, SHEET_NAME)

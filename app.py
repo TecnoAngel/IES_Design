@@ -48,19 +48,10 @@ st.markdown(
         background-clip: text;
         margin-top: 0;
     }
-    @media (prefers-color-scheme: light) {
-        .panel-card {
-            background: #fff;
-            border: 1px solid #f1e3d4;
-            color: #333;
-        }
-    }
-    @media (prefers-color-scheme: dark) {
-        .panel-card {
-            background: #1a1a2e;
-            border: 1px solid #333;
-            color: #e0e0e0;
-        }
+    .panel-card {
+        background: #ffffff;
+        border: 1px solid #e7e2f2;
+        color: #333333;
     }
     /* Cabecera de bloque dentro de una pestaña con varios apartados apilados. */
     .block-head {
@@ -147,7 +138,7 @@ if prog_excel is not None and st.session_state.get("prog_loaded_name") != prog_e
             t: float(_sa.horas_previstas.get(t, 0.0)) for t in TRIMESTRES
         }
         _il = read_indicadores(prog_excel)
-        st.session_state.il_rows = il_recompute(_il["rows"], _il["ce_ced"])
+        st.session_state.il_rows = il_recompute(_il["rows"], _il["ce_ced"], _il["ce_list"])
         st.session_state.il_ce_list = _il["ce_list"]
         st.session_state.il_ce_ced = _il["ce_ced"]
         st.session_state.il_aux = _il["aux"]
@@ -361,26 +352,44 @@ elif page == "Diseño de la programación":
         with st.container(border=True):
             st.markdown(
                 '<div class="mini-label">CE se elige de la lista · CED e IL (4.2.1, 4.2.2…) '
-                "son automáticos · PIL a mano, PIL% automático · SA solo entre las de arriba</div>",
+                "son automáticos · PIL a mano, PIL% automático · SA solo entre las de arriba · "
+                "las filas se agrupan solas por criterio (no hace falta reordenarlas)</div>",
                 unsafe_allow_html=True,
             )
+
+            def _empty_to_none(value):
+                return None if value in (None, "") else value
 
             il_df = pd.DataFrame(
                 [
                     {
-                        "CE": r["CE"], "IL": r["IL"], "PIL": r["PIL"],
-                        "PIL%": r["PIL%"] * 100,
-                        "DIL": r["DIL"], "DO": r["DO"], "CON": r["CON"], "CT": r["CT"],
-                        "IE": r["IE"], "CC": r["CC"], "AE": r["AE"], "SA": r["SA"],
-                        "CED": r["CED"],
+                        "CE": r["CE"], "IL": r["IL"],
+                        "PIL": r["PIL"], "PIL%": r["PIL%"] * 100,
+                        "DIL": _empty_to_none(r["DIL"]), "DO": _empty_to_none(r["DO"]),
+                        "CON": _empty_to_none(r["CON"]), "CT": _empty_to_none(r["CT"]),
+                        "IE": _empty_to_none(r["IE"]), "CC": _empty_to_none(r["CC"]),
+                        "AE": _empty_to_none(r["AE"]), "SA": r["SA"],
+                        "CED": _empty_to_none(r["CED"]),
                     }
                     for r in st.session_state.il_rows
                 ],
                 columns=["CE", "IL", "PIL", "PIL%", "DIL", "DO", "CON", "CT", "IE", "CC", "AE", "SA", "CED"],
             )
 
+            # Sombreado por bloque de CE: alterna un tono suave para cada criterio,
+            # así se distinguen los grupos de indicadores (solo pinta las columnas
+            # no editables: IL, PIL%, CED).
+            _ce_seq = list(dict.fromkeys(r["CE"] for r in st.session_state.il_rows))
+            _ce_shade = {ce: (i % 2 == 1) for i, ce in enumerate(_ce_seq)}
+
+            def _shade_row(row):
+                bg = "background-color: #f0ecfa" if _ce_shade.get(row["CE"]) else ""
+                return [bg] * len(row)
+
+            il_styled = il_df.style.apply(_shade_row, axis=1)
+
             il_edited = st.data_editor(
-                il_df,
+                il_styled,
                 num_rows="dynamic",
                 use_container_width=True,
                 height=420,
@@ -417,7 +426,7 @@ elif page == "Diseño de la programación":
                 }
                 for _, r in il_edited.iterrows()
             ]
-            il_new = il_recompute(il_raw, ce_ced)
+            il_new = il_recompute(il_raw, ce_ced, ce_list)
             if _il_sig(il_new) != _il_sig(st.session_state.il_rows):
                 st.session_state.il_rows = il_new
                 st.session_state.pop("prog_out", None)
@@ -446,7 +455,7 @@ elif page == "Diseño de la programación":
                 else:
                     try:
                         _data = save_situaciones(prog_excel, sits, previstas)
-                        _data = save_indicadores(BytesIO(_data), st.session_state.il_rows, ce_ced)
+                        _data = save_indicadores(BytesIO(_data), st.session_state.il_rows, ce_ced, ce_list)
                         st.session_state.prog_out = _data
                         st.session_state.prog_msg = ""
                     except Exception as exc:

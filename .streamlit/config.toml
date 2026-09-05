@@ -1,0 +1,8 @@
+# Tema fijo (claro) para que los desplegables de las tablas tengan contraste
+# suficiente y la interfaz se vea igual para todo el profesorado.
+[theme]
+base = "light"
+primaryColor = "#764ba2"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f3f1fa"
+textColor = "#1f1f28"
