@@ -8,6 +8,10 @@ __pycache__/
 # Salida generada / archivos de prueba: no se sube nada de aquí
 salida/
 
+# Excels de trabajo/prueba en la raíz (datos de programación reales)
+/*.xlsx
+/*.xlsm
+
 # Plantillas: se versiona la plantilla por defecto ya incluida;
 # cualquier plantilla nueva que añadas aquí no se subirá sola
 # (usa "git add -f <archivo>" si alguna vez quieres versionar una nueva a propósito)

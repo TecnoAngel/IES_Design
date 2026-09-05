@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 
 ROOT = Path(__file__).resolve().parent
@@ -75,7 +76,7 @@ st.markdown("")
 # st.tabs no conserva la pestaña activa entre reruns (cada clic en un botón
 # devuelve la vista a la primera pestaña), así que la navegación se hace con
 # un widget normal atado a session_state para que sea persistente.
-PAGES = ["Inicio", "Programación de aula"]
+PAGES = ["Inicio", "Situaciones de aprendizaje", "Programación de aula"]
 page = st.segmented_control(
     "Navegación",
     PAGES,
@@ -88,6 +89,170 @@ page = st.segmented_control(
 # PÁGINA: INICIO
 if page == "Inicio":
     st.markdown('<div class="panel-card"><h3>Bienvenido</h3><p>Elige una sección arriba para empezar.</p></div>', unsafe_allow_html=True)
+
+# PÁGINA: SITUACIONES DE APRENDIZAJE
+elif page == "Situaciones de aprendizaje":
+    st.markdown(
+        '<div class="panel-card"><h3>Situaciones de aprendizaje</h3>'
+        "<p>Sube tu copia del Excel de programación, edita la tabla de situaciones "
+        "de aprendizaje (añadir, quitar o modificar filas) y descarga el Excel "
+        "actualizado. No se toca nada más del libro: el modelo de datos, las tablas "
+        "dinámicas y el formato condicional se conservan y se recalculan al abrirlo.</p></div>",
+        unsafe_allow_html=True,
+    )
+
+    from tools.situaciones_aprendizaje import (
+        TRIMESTRES,
+        Situacion,
+        acumulado_por_trimestre,
+        read_situaciones,
+        save_situaciones,
+    )
+
+    COLS = ["SA", "EV", "DSA", "HSA"]
+
+    st.markdown("### Archivo")
+    sa_excel = st.file_uploader(
+        "Excel de programación (.xlsx con la hoja 'SituacionesAprendizaje')",
+        type=["xlsx", "xlsm"],
+        key="sa_excel_uploader",
+    )
+
+    # Al cambiar de archivo, se recarga la tabla desde cero.
+    if sa_excel is not None and st.session_state.get("sa_loaded_name") != sa_excel.name:
+        try:
+            data = read_situaciones(sa_excel)
+            st.session_state.sa_df = pd.DataFrame(
+                [[s.sa, s.ev, s.dsa, s.hsa] for s in data.situaciones], columns=COLS
+            )
+            st.session_state.sa_previstas = {
+                t: float(data.horas_previstas.get(t, 0.0)) for t in TRIMESTRES
+            }
+            st.session_state.sa_loaded_name = sa_excel.name
+            st.session_state.pop("sa_out", None)
+        except Exception as exc:
+            st.error(f"No se ha podido leer el Excel: {exc}")
+
+    if sa_excel is None:
+        st.info("Sube el Excel para empezar a editar.")
+    elif "sa_df" in st.session_state:
+        st.divider()
+        st.markdown("### Situaciones de aprendizaje")
+        st.caption(
+            "SA = nº de situación · EV = evaluación/trimestre (1, 2 o 3) · "
+            "DSA = descripción · HSA = horas previstas para la situación."
+        )
+
+        edited = st.data_editor(
+            st.session_state.sa_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="sa_editor",
+            column_config={
+                "SA": st.column_config.NumberColumn("SA (nº)", min_value=1, step=1, format="%d"),
+                "EV": st.column_config.SelectboxColumn("EV (trimestre)", options=list(TRIMESTRES)),
+                "DSA": st.column_config.TextColumn("Descripción", width="large"),
+                "HSA": st.column_config.NumberColumn("Horas (HSA)", min_value=0, step=1, format="%d"),
+            },
+        )
+
+        # Validaciones
+        errores = []
+        filas = [r for _, r in edited.iterrows() if not r[COLS].isna().all()]
+        for i, r in enumerate(filas, start=1):
+            if pd.isna(r["SA"]):
+                errores.append(f"Fila {i}: falta el nº de situación (SA).")
+            if not str(r["DSA"] or "").strip():
+                errores.append(f"Fila {i}: falta la descripción (DSA).")
+            if pd.isna(r["HSA"]) or float(r["HSA"] or 0) < 0:
+                errores.append(f"Fila {i}: las horas (HSA) deben ser un número ≥ 0.")
+            if pd.isna(r["EV"]) or int(r["EV"] or 0) not in TRIMESTRES:
+                errores.append(f"Fila {i}: la evaluación (EV) debe ser 1, 2 o 3.")
+        sa_nums = [int(r["SA"]) for r in filas if not pd.isna(r["SA"])]
+        duplicados = sorted({n for n in sa_nums if sa_nums.count(n) > 1})
+        if duplicados:
+            errores.append(f"Hay números de situación repetidos: {duplicados}.")
+
+        # Panel de horas: previstas vs acumuladas
+        st.divider()
+        st.markdown("### Horas por trimestre")
+        st.caption(
+            "Las horas previstas se toman del propio Excel; ajústalas a mano si quieres. "
+            "(Calcularlas desde el calendario oficial de Castilla y León, como en IES Creator, "
+            "queda para el siguiente paso.)"
+        )
+
+        sits_para_calculo = [
+            Situacion(
+                sa=None if pd.isna(r["SA"]) else int(r["SA"]),
+                ev=None if pd.isna(r["EV"]) else int(r["EV"]),
+                dsa=str(r["DSA"] or ""),
+                hsa=None if pd.isna(r["HSA"]) else float(r["HSA"]),
+            )
+            for r in filas
+        ]
+        acumulado = acumulado_por_trimestre(sits_para_calculo)
+
+        prev_cols = st.columns(3)
+        previstas = {}
+        for col, tri in zip(prev_cols, TRIMESTRES):
+            with col:
+                previstas[tri] = st.number_input(
+                    f"{tri}º trimestre — horas previstas",
+                    min_value=0.0,
+                    step=1.0,
+                    value=float(st.session_state.sa_previstas.get(tri, 0.0)),
+                    key=f"sa_prev_{tri}",
+                )
+                acc = acumulado.get(tri, 0.0)
+                desv = previstas[tri] - acc
+                st.metric(
+                    "Acumulado (suma HSA)",
+                    f"{acc:g} h",
+                    delta=f"{desv:+g} h de desviación",
+                    delta_color="normal" if desv >= 0 else "inverse",
+                )
+                if desv < 0:
+                    st.error(f"Te pasas {abs(desv):g} h en el {tri}º trimestre.")
+
+        total_prev = sum(previstas.values())
+        total_acc = sum(acumulado.values())
+        st.markdown(
+            f"**Total curso:** {total_acc:g} h planificadas de {total_prev:g} h previstas "
+            f"(**{total_prev - total_acc:+g} h**)."
+        )
+
+        # Guardar
+        st.divider()
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            if st.button("Guardar y preparar descarga", use_container_width=True, type="primary", key="btn_save_sa"):
+                if errores:
+                    st.error("Corrige los avisos antes de guardar:\n\n- " + "\n- ".join(errores))
+                else:
+                    try:
+                        st.session_state.sa_out = save_situaciones(sa_excel, sits_para_calculo, previstas)
+                        st.success("Excel actualizado. Descárgalo abajo.")
+                    except Exception as exc:
+                        st.error(f"Error al guardar el Excel: {exc}")
+        with col2:
+            if st.button("Descartar cambios", use_container_width=True, key="btn_reset_sa"):
+                for k in ("sa_df", "sa_previstas", "sa_loaded_name", "sa_out"):
+                    st.session_state.pop(k, None)
+                st.rerun()
+
+        if errores:
+            st.warning("Avisos:\n\n- " + "\n- ".join(errores))
+
+        if st.session_state.get("sa_out"):
+            nombre = sa_excel.name.rsplit(".", 1)[0] + "_actualizado.xlsx"
+            st.download_button(
+                "Descargar Excel actualizado",
+                data=st.session_state.sa_out,
+                file_name=nombre,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
 
 # PÁGINA: PROGRAMACIÓN DE AULA
 elif page == "Programación de aula":
