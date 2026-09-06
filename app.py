@@ -1463,12 +1463,13 @@ elif page == "Programación de aula":
                 )
             ss.pa_sa_edits[_dsa_sel] = _cur
 
-        # ── BLOQUE: Resumen de actividades por SA (tabla dinámica de INFORMES)
-        st.markdown(
-            '<div class="block-head">Resumen de actividades por situación de aprendizaje</div>',
-            unsafe_allow_html=True,
-        )
-        with st.container(border=True):
+            # ── Resumen de actividades de esta SA (dinámica de INFORMES)
+            st.divider()
+            st.markdown(
+                '<div class="mini-label">Resumen de actividades de esta situación de '
+                "aprendizaje (valor de cada actividad sobre la programación y sobre la SA)</div>",
+                unsafe_allow_html=True,
+            )
             _val = valores_actividades(ss.pa_acts, _il_state, _ce_p)
             _val_sa = [a for a in _val if a.get("SA") == sa_sel]
             _rheaders = ["A", "Descripción", "Valor s/ programación", "Valor s/ SA"]
