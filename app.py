@@ -196,33 +196,6 @@ with st.container(border=True):
         )
     dl_box = ubar2.container()
 
-if prog_excel is not None and st.session_state.get("prog_loaded_name") != prog_excel.name:
-    try:
-        _sa = read_situaciones(prog_excel)
-        st.session_state.sa_df = pd.DataFrame(
-            [[s.sa, s.ev, s.dsa, s.hsa] for s in _sa.situaciones], columns=SA_COLS
-        )
-        st.session_state.sa_previstas = {
-            t: float(_sa.horas_previstas.get(t, 0.0)) for t in TRIMESTRES
-        }
-        _il = read_indicadores(prog_excel)
-        st.session_state.il_rows = il_recompute(_il["rows"], _il["ce_ced"], _il["ce_list"])
-        st.session_state.il_ce_list = _il["ce_list"]
-        st.session_state.il_ce_ced = _il["ce_ced"]
-        st.session_state.il_ce_p = _il["ce_p"]
-        st.session_state.il_aux = _il["aux"]
-        st.session_state.elementos = read_elementos_curriculares(prog_excel)
-        st.session_state.prog_loaded_name = prog_excel.name
-        # al cambiar de archivo, se descartan los estados canónicos derivados
-        for _k in (
-            "prog_out", "sa_grid_rows", "ce_rows", "il_pending",
-            "pa_datos", "pa_sa_edits", "pa_acts", "pa_docx",
-        ):
-            st.session_state.pop(_k, None)
-    except Exception as exc:
-        st.error(f"No se ha podido leer el Excel: {exc}")
-
-
 def _sa_pares():
     """(nº, descripción) de cada SA, ordenados por nº. Del estado editado si lo
     hay, si no del Excel cargado."""
@@ -250,6 +223,47 @@ def _estado_coherencia():
     )
 
 
+if prog_excel is not None and st.session_state.get("prog_loaded_name") != prog_excel.name:
+    try:
+        _sa = read_situaciones(prog_excel)
+        st.session_state.sa_df = pd.DataFrame(
+            [[s.sa, s.ev, s.dsa, s.hsa] for s in _sa.situaciones], columns=SA_COLS
+        )
+        st.session_state.sa_previstas = {
+            t: float(_sa.horas_previstas.get(t, 0.0)) for t in TRIMESTRES
+        }
+        _il = read_indicadores(prog_excel)
+        st.session_state.il_rows = il_recompute(_il["rows"], _il["ce_ced"], _il["ce_list"])
+        st.session_state.il_ce_list = _il["ce_list"]
+        st.session_state.il_ce_ced = _il["ce_ced"]
+        st.session_state.il_ce_p = _il["ce_p"]
+        st.session_state.il_aux = _il["aux"]
+        st.session_state.elementos = read_elementos_curriculares(prog_excel)
+        st.session_state.prog_loaded_name = prog_excel.name
+        from tools.programacion_aula_editor import read_prog_aula
+
+        _pae = read_prog_aula(prog_excel)
+        st.session_state.pa_datos = dict(_pae["datos"])
+        st.session_state.pa_campos_datos = [k for k, _ in _pae["datos"]]
+        st.session_state.pa_sa_campos = _pae["sa_campos"]
+        st.session_state.pa_sa_cols = _pae["sa_cols"]
+        st.session_state.pa_acts = _pae["actividades"]
+        st.session_state.pa_sa_edits = {}
+
+        # al cambiar de archivo, se descartan los estados canónicos derivados
+        for _k in (
+            "prog_out", "prog_base", "sa_grid_rows", "ce_rows", "il_pending",
+            "pa_docx", "consist_seen",
+        ):
+            st.session_state.pop(_k, None)
+
+        from tools.consistencia import revisar as _revisar
+
+        st.session_state.consist_issues = _revisar(*_estado_coherencia())
+    except Exception as exc:
+        st.error(f"No se ha podido leer el Excel: {exc}")
+
+
 def _guardar_todo(regen_pasa: bool = False) -> bytes:
     """Aplica sobre el Excel subido todos los cambios en sesión (situaciones,
     criterios, indicadores y programación de aula) y devuelve los bytes."""
@@ -259,7 +273,7 @@ def _guardar_todo(regen_pasa: bool = False) -> bytes:
     from tools.situaciones_aprendizaje import Situacion, save_situaciones
 
     ss = st.session_state
-    data = prog_excel.getvalue()
+    data = ss.get("prog_base") or prog_excel.getvalue()
 
     if "sa_grid_rows" in ss:
         sits_g = [
@@ -301,58 +315,94 @@ def _guardar_todo(regen_pasa: bool = False) -> bytes:
     return data
 
 
+def _aplicar_regeneracion(issues):
+    """Aplica en sesión los arreglos automáticos de los desajustes fixables:
+    1 IL en blanco por CE sin indicador, quita actividades huérfanas y regenera
+    las columnas de P_Aula_SA (deja `prog_base` con ese Excel de partida)."""
+    ss = st.session_state
+    from io import BytesIO as _B2
+
+    from tools.consistencia import add_il_para_ce, quitar_actividades_huerfanas, regenerar_p_aula_sa
+    from tools.programacion_aula_editor import read_prog_aula
+
+    _ce_sin = next((it["datos"] for it in issues if it["clave"] == "ce_sin_il"), [])
+    if _ce_sin:
+        ss.il_rows = il_recompute(
+            add_il_para_ce(ss.il_rows, _ce_sin), ss.il_ce_ced, ss.il_ce_list
+        )
+        ss.pop("il_pending", None)
+    if any(it["clave"] == "act_huerfanas" for it in issues):
+        ss.pa_acts = quitar_actividades_huerfanas(ss.get("pa_acts", []), ss.il_rows)
+    if any(it["clave"] == "pasa_desajuste" for it in issues):
+        _base = ss.get("prog_base") or prog_excel.getvalue()
+        _reg = regenerar_p_aula_sa(_B2(_base), [t for _, t in _sa_pares()])
+        ss.prog_base = _reg
+        ss.pa_sa_cols = read_prog_aula(_B2(_reg))["sa_cols"]
+        ss.pa_sa_edits = {}
+    ss.pop("consist_issues", None)
+    ss.pop("prog_out", None)
+    ss.pop("pa_docx", None)
+
+
 @st.dialog("Revisión de coherencia con las situaciones de aprendizaje", width="large")
-def _dlg_coherencia(issues, generar=False):
-    st.write(
-        "La tabla de **situaciones de aprendizaje** manda. Hay desajustes:"
-    )
+def _dlg_coherencia(issues, contexto="carga"):
+    ss = st.session_state
+    _txt = {
+        "carga": "Al cargar el Excel se ha revisado su contenido. La tabla de "
+        "**situaciones de aprendizaje** manda (SA → CE → IL → actividades) y hay "
+        "desajustes:",
+        "guardar": "La tabla de **situaciones de aprendizaje** manda. Antes de "
+        "guardar hay desajustes:",
+        "generar": "La tabla de **situaciones de aprendizaje** manda. Antes de "
+        "generar la programación hay desajustes:",
+    }[contexto]
+    st.write(_txt)
     for it in issues:
         st.warning(f"**{it['titulo']}**\n\n{it['detalle']}")
     _manual = [it for it in issues if not it.get("autofix")]
     if _manual:
         st.error(
-            "Algún desajuste no se puede arreglar solo. Corrígelo en el Excel y "
-            "vuelve a subirlo."
+            "Alguno no se puede arreglar solo (los criterios de evaluación tienen "
+            "que estar bien). Corrígelo en el Excel y vuelve a subirlo."
         )
+
+    _accion = "Regenerar en blanco lo que haga falta"
+    if contexto == "guardar":
+        _accion += " y guardar"
+    elif contexto == "generar":
+        _accion += " y generar"
+
     c1, c2 = st.columns(2)
-    if c1.button("Abortar — lo arreglo en Excel", use_container_width=True, key="dlg_abort"):
+    if c1.button("Parar — lo arreglo a mano en Excel", use_container_width=True, key="dlg_abort"):
+        ss.consist_seen = True
         st.rerun()
-    if c2.button(
-        "Regenerar automáticamente", type="primary", use_container_width=True,
-        disabled=bool(_manual), key="dlg_regen",
-    ):
-        ss = st.session_state
-        from io import BytesIO as _B2
-
-        from tools.consistencia import add_il_para_ce, quitar_actividades_huerfanas
-
-        _ce_sin = next((it["datos"] for it in issues if it["clave"] == "ce_sin_il"), [])
-        _regen_pasa = any(it["clave"] == "pasa_desajuste" for it in issues)
-        if _ce_sin:
-            ss.il_rows = il_recompute(
-                add_il_para_ce(ss.il_rows, _ce_sin), ss.il_ce_ced, ss.il_ce_list
-            )
-            ss.pop("il_pending", None)
-        if any(it["clave"] == "act_huerfanas" for it in issues):
-            ss.pa_acts = quitar_actividades_huerfanas(ss.get("pa_acts", []), ss.il_rows)
+    if c2.button(_accion, type="primary", use_container_width=True,
+                 disabled=bool(_manual), key="dlg_regen"):
         try:
-            _data = _guardar_todo(regen_pasa=_regen_pasa)
-            ss.prog_out = _data
+            _aplicar_regeneracion(issues)
+            ss.consist_seen = True
             ss.prog_msg = ""
-            if _regen_pasa:
-                from tools.programacion_aula_editor import read_prog_aula
+            if contexto in ("guardar", "generar"):
+                _data = _guardar_todo()
+                ss.prog_out = _data
+                if contexto == "generar":
+                    from io import BytesIO as _B3
 
-                ss.pa_sa_cols = read_prog_aula(_B2(_data))["sa_cols"]
-                ss.pa_sa_edits = {}
-            if generar:
-                from tools.programacion_aula import run_programacion_aula
-
-                ss.pa_docx = run_programacion_aula(_B2(_data), ss.get("pa_tpl"))
+                    from tools.programacion_aula import run_programacion_aula
+                    ss.pa_docx = run_programacion_aula(_B3(_data), ss.get("pa_tpl"))
         except Exception as exc:
             ss.prog_msg = f"Error al regenerar: {exc}"
-            ss.pop("prog_out", None)
         st.rerun()
 
+
+# ── Al cargar el Excel: si algo no cuadra con las situaciones de aprendizaje,
+#    salta el aviso (una vez, hasta que se decida qué hacer).
+if (
+    prog_excel is not None
+    and st.session_state.get("consist_issues")
+    and not st.session_state.get("consist_seen")
+):
+    _dlg_coherencia(st.session_state.consist_issues, contexto="carga")
 
 # ── Botón global "Guardar Excel" en la barra de arriba (todas las pestañas).
 with dl_box:
@@ -362,7 +412,7 @@ with dl_box:
 
             _iss = revisar(*_estado_coherencia())
             if _iss:
-                _dlg_coherencia(_iss)
+                _dlg_coherencia(_iss, contexto="guardar")
             else:
                 try:
                     st.session_state.prog_out = _guardar_todo()
@@ -1240,7 +1290,7 @@ elif page == "Programación de aula":
 
             _iss = revisar(*_estado_coherencia())
             if _iss:
-                _dlg_coherencia(_iss, generar=True)
+                _dlg_coherencia(_iss, contexto="generar")
             else:
                 try:
                     _upd = _guardar_todo()
@@ -1394,12 +1444,21 @@ elif page == "Programación de aula":
                     ss.pop("prog_out", None)
                     ss.pop("pa_docx", None)
 
-            # Campos de la programación de aula para esta SA (columna de P_Aula_SA)
+            # Campos de la programación de aula para esta SA: se empareja la
+            # columna de P_Aula_SA por título; si no, por posición.
+            import re as _re
+
+            _dsa_sel = next((d for n, d in _sa_opts if n == sa_sel), "")
+            _norm = lambda s: _re.sub(r"\s+", " ", str(s or "")).strip().lower()
             _col = None
-            if 1 <= sa_sel <= len(ss.pa_sa_cols):
-                _entry = ss.pa_sa_cols[sa_sel - 1]
-                _col = _entry["col"]
-                _base = _entry["valores"]
+            _base = {}
+            for _e in ss.pa_sa_cols:
+                if _norm(_e.get("valores", {}).get("titulo")) == _norm(_dsa_sel):
+                    _col, _base = _e["col"], _e["valores"]
+                    break
+            if _col is None and 1 <= sa_sel <= len(ss.pa_sa_cols):
+                _e = ss.pa_sa_cols[sa_sel - 1]
+                _col, _base = _e["col"], _e["valores"]
             if _col:
                 st.markdown("**Campos de la programación de aula para esta SA**")
                 _cur = ss.pa_sa_edits.get(_col, dict(_base))

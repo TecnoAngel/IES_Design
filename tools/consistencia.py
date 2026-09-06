@@ -95,23 +95,31 @@ def revisar(
             }
         )
 
-    # 3) P_Aula_SA: una columna por SA, con su título
+    # 3) P_Aula_SA: una columna por SA, emparejadas por título
     n_sa = len(sa_nums)
-    n_col = len(pa_sa_cols)
-    titulos_col = [_s(c.get("valores", {}).get("titulo")) for c in pa_sa_cols]
-    desajuste = n_col != n_sa or any(
-        _norm(a) != _norm(b) for a, b in zip(titulos_col, sa_titulos)
-    )
-    if desajuste:
+    titulos_col = {_norm(c.get("valores", {}).get("titulo")) for c in pa_sa_cols}
+    titulos_sa = {_norm(t) for t in sa_titulos}
+    sa_sin_col = [t for t in sa_titulos if _norm(t) not in titulos_col]
+    col_sin_sa = [
+        _s(c.get("valores", {}).get("titulo")) or _s(c.get("nombre"))
+        for c in pa_sa_cols
+        if _norm(c.get("valores", {}).get("titulo")) not in titulos_sa
+    ]
+    if sa_sin_col or col_sin_sa or len(pa_sa_cols) != n_sa:
+        det = []
+        if sa_sin_col:
+            det.append("SA sin columna: " + ", ".join(sa_sin_col))
+        if col_sin_sa:
+            det.append("Columnas que ya no son de ninguna SA: " + ", ".join(col_sin_sa))
+        det.append(
+            "Regenerar deja una columna por SA (en orden), con su título, "
+            "conservando el contenido de las que cuadran por título."
+        )
         issues.append(
             {
                 "clave": "pasa_desajuste",
                 "titulo": "La tabla P_Aula_SA no coincide con las situaciones de aprendizaje",
-                "detalle": (
-                    f"Situaciones: {n_sa}. Columnas en P_Aula_SA: {n_col}. "
-                    "Regenerar creará una columna por SA con su título "
-                    "(se conserva el contenido de las que ya cuadran por posición)."
-                ),
+                "detalle": " · ".join(det),
                 "autofix": "regen_pasa",
                 "datos": sa_titulos,
             }
