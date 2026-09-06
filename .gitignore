@@ -12,9 +12,11 @@ salida/
 /*.xlsx
 /*.xlsm
 
-# Plantillas: se versiona la plantilla por defecto ya incluida;
+# Archivos temporales de Office (~$...)
+~$*
+
+# Plantillas: solo se versiona la plantilla Word por defecto;
 # cualquier plantilla nueva que añadas aquí no se subirá sola
 # (usa "git add -f <archivo>" si alguna vez quieres versionar una nueva a propósito)
 templates/*
-!templates/programacion_aula_datos_template.xlsx
 !templates/programacion_aula_template.docx
