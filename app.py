@@ -154,7 +154,6 @@ st.markdown(
     <div class="topbar">
         <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.18em; opacity: 0.9; margin-bottom: 0.25rem;">Programación didáctica</div>
         <div class="topbar-title">IES Diseño</div>
-        <div class="topbar-sub">Diseño y revisión de la programación sobre tu propio Excel.</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -165,7 +164,7 @@ st.markdown("")
 # st.tabs no conserva la pestaña activa entre reruns (cada clic en un botón
 # devuelve la vista a la primera pestaña), así que la navegación se hace con
 # un widget normal atado a session_state para que sea persistente.
-PAGES = ["Inicio", "Diseño de la programación", "Elementos curriculares", "Programación de aula"]
+PAGES = ["Inicio", "Diseño de la programación", "Contenidos", "Programación de aula"]
 page = st.segmented_control(
     "Navegación",
     PAGES,
@@ -1151,10 +1150,10 @@ elif page == "Diseño de la programación":
                     use_container_width=True, key="dl_cmp_png",
                 )
 
-# PÁGINA: ELEMENTOS CURRICULARES
-elif page == "Elementos curriculares":
+# PÁGINA: CONTENIDOS
+elif page == "Contenidos":
     st.markdown(
-        '<div class="panel-card"><h3>Elementos curriculares</h3>'
+        '<div class="panel-card"><h3>Contenidos</h3>'
         "<p>Contenidos de la materia y contenidos transversales (hoja "
         "<code>LOMLOE</code>). Se marca en verde cada elemento que ya está "
         "asignado a algún indicador de logro (en su columna CON o CT), igual que "
