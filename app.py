@@ -617,6 +617,7 @@ elif page == "Diseño de la programación":
             unsafe_allow_html=True,
         )
         with st.container(border=True):
+            from st_aggrid import AgGrid, GridOptionsBuilder
             from tools.indicadores_logro import matriz_sa_ce
             from tools.situaciones_informe import (
                 _fmt_pct2,
@@ -660,30 +661,42 @@ elif page == "Diseño de la programación":
             _tot.append(_fmt_pct2(sum(_pct_h.values())))
             _body.append(_tot)
 
-            st.dataframe(
-                pd.DataFrame(_body, columns=_headers),
-                use_container_width=True, hide_index=True,
-            )
-            components.html(
-                build_html_table_copy_html(
-                    render_word_table_html(_headers, _body),
-                    btn_id="mx-copy-tab", fn="mxCopyTab", label="Copiar tabla (Word)",
-                ),
-                height=40,
-            )
-
-            st.divider()
             _labels = [f"{sa}: {_dsa.get(sa, '')}" for sa in sa_rows_m]
             _cmp_png = build_sa_compare_png(
                 sa_rows_m, _labels,
                 [_m["sa_total"].get(sa, 0.0) for sa in sa_rows_m],
                 [_pct_h.get(sa, 0.0) for sa in sa_rows_m],
             )
-            st.image(_cmp_png, use_container_width=True)
-            gc1, gc2, _ = st.columns([1, 1, 3])
-            with gc1:
+
+            mx_tab, mx_gra = st.columns([3, 1.4], gap="medium")
+
+            with mx_tab:
+                _mx_df = pd.DataFrame(_body, columns=_headers)
+                _mx_df.insert(1, "Título", [_dsa.get(sa, "") for sa in sa_rows_m] + [""])
+                _gb = GridOptionsBuilder.from_dataframe(_mx_df)
+                _gb.configure_default_column(editable=False, resizable=True, sortable=False,
+                                             filter=False, width=78)
+                _gb.configure_column("Título", hide=True)
+                _gb.configure_column("SA", pinned="left", width=64, tooltipField="Título")
+                _gb.configure_column("Total (IL)", pinned="right", width=90)
+                _gb.configure_column("% SA (horas)", pinned="right", width=100)
+                _gb.configure_grid_options(enableBrowserTooltips=True, tooltipShowDelay=300, rowHeight=28)
+                AgGrid(
+                    _mx_df, gridOptions=_gb.build(), allow_unsafe_jscode=True,
+                    fit_columns_on_grid_load=False, height=430, theme="balham",
+                    update_on=[], key="mx_grid",
+                )
+                components.html(
+                    build_html_table_copy_html(
+                        render_word_table_html(_headers, _body),
+                        btn_id="mx-copy-tab", fn="mxCopyTab", label="Copiar tabla (Word)",
+                    ),
+                    height=40,
+                )
+
+            with mx_gra:
+                st.image(_cmp_png, use_container_width=True)
                 components.html(build_image_copy_html(_cmp_png), height=40)
-            with gc2:
                 st.download_button(
                     "Descargar PNG", data=_cmp_png,
                     file_name="peso_SA_IL_vs_horas.png", mime="image/png",

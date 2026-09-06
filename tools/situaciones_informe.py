@@ -116,26 +116,26 @@ def build_sa_compare_png(
     *,
     dpi: int = 150,
 ) -> bytes:
-    """Barras agrupadas: peso de cada SA según los IL asignados vs. según horas."""
+    """Barras horizontales agrupadas: peso de cada SA según los IL asignados
+    vs. según la carga de horas. Formato vertical/estrecho para ir al lado de
+    la tabla."""
     import numpy as np
 
     n = len(sa_rows)
-    fig, ax = plt.subplots(figsize=(max(7.0, n * 0.7), 4.8))
+    fig, ax = plt.subplots(figsize=(4.6, max(3.2, n * 0.42)))
     if n:
-        x = np.arange(n)
-        w = 0.4
-        ax.bar(x - w / 2, [p * 100 for p in pct_il], w, label="Según IL asignados", color="#764ba2")
-        ax.bar(x + w / 2, [p * 100 for p in pct_horas], w, label="Según carga de horas", color="#f0a500")
-        ax.set_xticks(x)
-        ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
-        ax.set_ylabel("% sobre el total")
-        ax.set_title(
-            "Peso de cada situación de aprendizaje: IL asignados vs. carga de horas",
-            fontsize=11, fontweight="bold", pad=12,
-        )
-        ax.legend(fontsize=8, frameon=False)
+        y = np.arange(n)[::-1]  # SA 1 arriba
+        h = 0.4
+        ax.barh(y + h / 2, [p * 100 for p in pct_il], h, label="Según IL", color="#764ba2")
+        ax.barh(y - h / 2, [p * 100 for p in pct_horas], h, label="Según horas", color="#f0a500")
+        ax.set_yticks(y)
+        ax.set_yticklabels(labels, fontsize=7)
+        ax.set_xlabel("% sobre el total", fontsize=8)
+        ax.tick_params(axis="x", labelsize=7)
+        ax.set_title("Peso de la SA: IL vs. horas", fontsize=9, fontweight="bold", pad=8)
+        ax.legend(fontsize=7, frameon=False, loc="lower right")
         ax.spines[["top", "right"]].set_visible(False)
-        ax.yaxis.grid(True, color="#e6e6e6")
+        ax.xaxis.grid(True, color="#e6e6e6")
         ax.set_axisbelow(True)
     else:
         ax.text(0.5, 0.5, "Sin datos", ha="center", va="center")
