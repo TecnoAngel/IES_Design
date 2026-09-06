@@ -205,62 +205,153 @@ elif page == "Diseño de la programación":
         st.markdown('<div class="block-head">Situaciones de aprendizaje</div>', unsafe_allow_html=True)
 
         with st.container(border=True):
-            # Contenedor reservado arriba del bloque: la calculadora de horas se
-            # rellena luego, cuando ya conocemos los datos editados.
+            from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+
+            st.session_state.setdefault("sa_nonce", 0)
+
+            def _sa_recompute(rows):
+                clean = [
+                    r for r in rows
+                    if r.get("SA") not in (None, "")
+                    or str(r.get("DSA") or "").strip()
+                    or r.get("HSA") not in (None, "")
+                ]
+
+                def _n(v):
+                    if v in (None, "") or (isinstance(v, float) and pd.isna(v)):
+                        return None
+                    try:
+                        return float(v)
+                    except (TypeError, ValueError):
+                        return None
+
+                total = sum(h for h in (_n(r.get("HSA")) for r in clean) if h)
+                out = []
+                for r in clean:
+                    h = _n(r.get("HSA"))
+                    ev = _n(r.get("EV"))
+                    sa = _n(r.get("SA"))
+                    out.append(
+                        {
+                            "SA": None if sa is None else int(sa),
+                            "EV": None if ev is None else int(ev),
+                            "DSA": "" if r.get("DSA") is None or (isinstance(r.get("DSA"), float) and pd.isna(r.get("DSA"))) else str(r.get("DSA")),
+                            "HSA": None if h is None else (int(h) if h.is_integer() else h),
+                            "PCT": (100 * h / total) if (h and total) else 0.0,
+                        }
+                    )
+                return out
+
+            def _sa_sig(rows):
+                return [(r["SA"], r["EV"], r["DSA"], r["HSA"]) for r in rows]
+
+            if "sa_grid_rows" not in st.session_state:
+                _init = [
+                    {"SA": v[0], "EV": v[1], "DSA": v[2], "HSA": v[3]}
+                    for v in st.session_state.sa_df.itertuples(index=False)
+                ]
+                st.session_state.sa_grid_rows = _sa_recompute(_init)
+
             calc_box = st.container()
             st.divider()
 
-            col_edit, col_pct, col_pie = st.columns([3, 1.1, 2.3], gap="small")
+            st.markdown(
+                '<div class="mini-label">SA · EV (trimestre) · Descripción · Horas · '
+                "<b>% horas</b> (se recalcula al pulsar Actualizar) · marca la casilla y "
+                "pulsa Borrar</div>",
+                unsafe_allow_html=True,
+            )
+            sc1, sc2, sc3, _sc = st.columns([1.3, 1.5, 1.2, 3])
+            sa_add_click = sc1.button("Añadir fila", use_container_width=True, key="sa_add")
+            sa_del_click = sc2.button("Borrar marcadas", use_container_width=True, key="sa_del")
+            sa_upd_click = sc3.button("Actualizar", use_container_width=True, type="primary", key="sa_upd")
+
+            col_edit, col_pie = st.columns([3.2, 2], gap="medium")
 
             with col_edit:
-                st.markdown('<div class="mini-label">Situaciones (editable)</div>', unsafe_allow_html=True)
-                edited = st.data_editor(
-                    st.session_state.sa_df,
-                    num_rows="dynamic",
-                    use_container_width=True,
-                    key="sa_editor",
-                    column_config={
-                        "SA": st.column_config.NumberColumn("SA (nº)", min_value=1, step=1, format="%d"),
-                        "EV": st.column_config.SelectboxColumn("EV (trim.)", options=list(TRIMESTRES)),
-                        "DSA": st.column_config.TextColumn("Descripción", width="large"),
-                        "HSA": st.column_config.NumberColumn("Horas", min_value=0, step=1, format="%d"),
-                    },
+                _sa_df = pd.DataFrame(
+                    [
+                        {
+                            "X": False,
+                            "SA": r["SA"], "EV": r["EV"], "DSA": r["DSA"],
+                            "HSA": r["HSA"], "% horas": r["PCT"],
+                        }
+                        for r in st.session_state.sa_grid_rows
+                    ],
+                    columns=["X", "SA", "EV", "DSA", "HSA", "% horas"],
+                )
+                _sa_df["X"] = _sa_df["X"].astype(bool)
+                _gb = GridOptionsBuilder.from_dataframe(_sa_df)
+                _gb.configure_default_column(editable=True, resizable=True, sortable=False, filter=False)
+                _gb.configure_column("X", headerName="", editable=True, width=44, pinned="left",
+                                     cellRenderer="agCheckboxCellRenderer",
+                                     cellEditor="agCheckboxCellEditor", cellDataType="boolean")
+                _gb.configure_column("SA", headerName="SA (nº)", width=82, type=["numericColumn"])
+                _gb.configure_column("EV", headerName="EV (trim.)", width=96,
+                                     cellEditor="agSelectCellEditor",
+                                     cellEditorParams={"values": [str(t) for t in TRIMESTRES]})
+                _gb.configure_column("DSA", headerName="Descripción", flex=1, minWidth=220, tooltipField="DSA")
+                _gb.configure_column("HSA", headerName="Horas", width=82, type=["numericColumn"])
+                _gb.configure_column(
+                    "% horas", editable=False, width=94,
+                    valueFormatter=JsCode(
+                        "function(p){return p.value==null?'':Number(p.value).toFixed(1)+' %'}"
+                    ),
+                )
+                _gb.configure_grid_options(enableBrowserTooltips=True, tooltipShowDelay=300, rowHeight=30)
+                _sa_grid = AgGrid(
+                    _sa_df, gridOptions=_gb.build(),
+                    update_on=[("cellValueChanged", 300)],
+                    allow_unsafe_jscode=True, fit_columns_on_grid_load=False,
+                    custom_css=AGGRID_GRID_CSS,
+                    height=min(430, 42 + 30 * len(_sa_df)),
+                    theme="balham", key=f"sa_grid_{st.session_state.sa_nonce}",
                 )
 
-            filas = [r for _, r in edited.iterrows() if not r[COLS].isna().all()]
-            sits = [
-                Situacion(
-                    sa=None if pd.isna(r["SA"]) else int(r["SA"]),
-                    ev=None if pd.isna(r["EV"]) else int(r["EV"]),
-                    dsa=str(r["DSA"] or ""),
-                    hsa=None if pd.isna(r["HSA"]) else float(r["HSA"]),
+            _sg = pd.DataFrame(_sa_grid["data"])
+            if _sg.empty or "SA" not in _sg.columns:
+                _sg = _sa_df.copy()
+
+            def _truthy(v):
+                return str(v).strip().lower() in ("true", "1", "yes", "x")
+
+            sa_pending = [
+                {"SA": r.get("SA"), "EV": r.get("EV"), "DSA": r.get("DSA"), "HSA": r.get("HSA")}
+                for _, r in _sg.iterrows()
+            ]
+            sa_del_flags = [_truthy(r.get("X")) for _, r in _sg.iterrows()]
+
+            if sa_add_click:
+                st.session_state.sa_grid_rows = _sa_recompute(
+                    sa_pending + [{"SA": None, "EV": None, "DSA": "", "HSA": None}]
                 )
-                for r in filas
+                st.session_state.sa_nonce += 1
+                st.session_state.pop("prog_out", None)
+                st.rerun()
+            if sa_del_click and any(sa_del_flags):
+                st.session_state.sa_grid_rows = _sa_recompute(
+                    [p for p, d in zip(sa_pending, sa_del_flags) if not d]
+                )
+                st.session_state.sa_nonce += 1
+                st.session_state.pop("prog_out", None)
+                st.rerun()
+            if sa_upd_click:
+                st.session_state.sa_grid_rows = _sa_recompute(sa_pending)
+                st.session_state.sa_nonce += 1
+                st.session_state.pop("prog_out", None)
+                st.rerun()
+
+            _sa_live = _sa_recompute(sa_pending)
+            if _sa_sig(_sa_live) != _sa_sig(st.session_state.sa_grid_rows):
+                st.info("Hay cambios en las situaciones. Pulsa **Actualizar** para recalcular el % de horas.")
+
+            sits = [
+                Situacion(sa=r["SA"], ev=r["EV"], dsa=r["DSA"], hsa=r["HSA"])
+                for r in _sa_live
             ]
             shares = hsa_share(sits)
             pie_png = build_pie_png(shares)
             total_h = sum(float(s.hsa) for s in sits if s.hsa)
-
-            with col_pct:
-                st.markdown('<div class="mini-label">% horas s/ total</div>', unsafe_allow_html=True)
-                _pct_col_df = pd.DataFrame(
-                    {
-                        "SA": [s.sa for s in sits],
-                        "%": [
-                            (100 * float(s.hsa) / total_h) if (s.hsa and total_h) else 0.0
-                            for s in sits
-                        ],
-                    }
-                )
-                st.dataframe(
-                    zebra_styler(_pct_col_df),
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "SA": st.column_config.NumberColumn(format="%d", width="small"),
-                        "%": st.column_config.NumberColumn(format="%.1f%%", width="small"),
-                    },
-                )
 
             with col_edit:
                 components.html(build_table_copy_html(shares), height=38)
@@ -274,10 +365,8 @@ elif page == "Diseño de la programación":
                         components.html(build_image_copy_html(pie_png), height=38)
                     with bcol2:
                         st.download_button(
-                            "Descargar PNG",
-                            data=pie_png,
-                            file_name="reparto_horas_SA.png",
-                            mime="image/png",
+                            "Descargar PNG", data=pie_png,
+                            file_name="reparto_horas_SA.png", mime="image/png",
                             use_container_width=True,
                         )
                 else:
@@ -285,19 +374,19 @@ elif page == "Diseño de la programación":
 
             # Validaciones
             errores = []
-            for i, r in enumerate(filas, start=1):
-                if pd.isna(r["SA"]):
+            for i, r in enumerate(_sa_live, start=1):
+                if r["SA"] is None:
                     errores.append(f"Fila {i}: falta el nº de situación (SA).")
-                if not str(r["DSA"] or "").strip():
+                if not r["DSA"].strip():
                     errores.append(f"Fila {i}: falta la descripción (DSA).")
-                if pd.isna(r["HSA"]) or float(r["HSA"] or 0) < 0:
+                if r["HSA"] is None or float(r["HSA"]) < 0:
                     errores.append(f"Fila {i}: las horas (HSA) deben ser un número ≥ 0.")
-                if pd.isna(r["EV"]) or int(r["EV"] or 0) not in TRIMESTRES:
+                if r["EV"] not in TRIMESTRES:
                     errores.append(f"Fila {i}: la evaluación (EV) debe ser 1, 2 o 3.")
-            sa_nums = [int(r["SA"]) for r in filas if not pd.isna(r["SA"])]
-            duplicados = sorted({n for n in sa_nums if sa_nums.count(n) > 1})
-            if duplicados:
-                errores.append(f"Hay números de situación repetidos: {duplicados}.")
+            _sn = [r["SA"] for r in _sa_live if r["SA"] is not None]
+            _dup = sorted({n for n in _sn if _sn.count(n) > 1})
+            if _dup:
+                errores.append(f"Hay números de situación repetidos: {_dup}.")
 
             # Calculadora de horas por trimestre (compacta, arriba del bloque).
             acumulado = acumulado_por_trimestre(sits)
