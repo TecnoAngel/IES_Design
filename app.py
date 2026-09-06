@@ -12,7 +12,10 @@ sys.path.append(str(ROOT))
 
 
 def _favicon():
-    """Escudo (corona + blasón) recortado del logo de la Junta, cuadrado."""
+    """Escudo (corona + blasón) de la Junta como icono de pestaña."""
+    fav = ROOT / "logo_favicon.png"
+    if fav.exists():
+        return str(fav)
     logo = ROOT / "logo_junta.jpg"
     if not logo.exists():
         return "🗂️"
@@ -20,12 +23,11 @@ def _favicon():
         from PIL import Image
 
         im = Image.open(logo).convert("RGB")
-        w, h = im.size
-        emblem = im.crop((int(w * 0.045), int(h * 0.02), int(w * 0.35), int(h * 0.62)))
-        side = max(emblem.size)
+        emblem = im.crop((52, 10, 176, 210))  # corona + escudo, sin el texto
+        side = max(emblem.size) + 12
         square = Image.new("RGB", (side, side), "white")
         square.paste(emblem, ((side - emblem.width) // 2, (side - emblem.height) // 2))
-        return square
+        return square.resize((128, 128), Image.LANCZOS)
     except Exception:
         return "🗂️"
 
