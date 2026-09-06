@@ -192,10 +192,13 @@ elif page == "Diseño de la programación":
             save_situaciones,
         )
         from tools.situaciones_informe import (
+            AGGRID_GRID_CSS,
+            AGGRID_LINES_CSS,
             build_image_copy_html,
             build_pie_png,
             build_table_copy_html,
             hsa_share,
+            zebra_styler,
         )
 
         # ───────────────── BLOQUE: SITUACIONES DE APRENDIZAJE ─────────────────
@@ -240,16 +243,17 @@ elif page == "Diseño de la programación":
 
             with col_pct:
                 st.markdown('<div class="mini-label">% horas s/ total</div>', unsafe_allow_html=True)
+                _pct_col_df = pd.DataFrame(
+                    {
+                        "SA": [s.sa for s in sits],
+                        "%": [
+                            (100 * float(s.hsa) / total_h) if (s.hsa and total_h) else 0.0
+                            for s in sits
+                        ],
+                    }
+                )
                 st.dataframe(
-                    pd.DataFrame(
-                        {
-                            "SA": [s.sa for s in sits],
-                            "%": [
-                                (100 * float(s.hsa) / total_h) if (s.hsa and total_h) else 0.0
-                                for s in sits
-                            ],
-                        }
-                    ),
+                    zebra_styler(_pct_col_df),
                     use_container_width=True,
                     hide_index=True,
                     column_config={
@@ -479,6 +483,7 @@ elif page == "Diseño de la programación":
                 update_on=[("cellValueChanged", 300)],
                 allow_unsafe_jscode=True,
                 fit_columns_on_grid_load=False,
+                custom_css=AGGRID_LINES_CSS,
                 height=430,
                 theme="balham",
                 key=f"il_grid_{st.session_state.il_nonce}",
@@ -573,7 +578,7 @@ elif page == "Diseño de la programación":
             )
             with st.expander("Ver resumen por criterio", expanded=False):
                 st.dataframe(
-                    pd.DataFrame(_res_rows, columns=_res_headers),
+                    zebra_styler(pd.DataFrame(_res_rows, columns=_res_headers)),
                     use_container_width=True,
                     hide_index=True,
                 )
@@ -617,7 +622,7 @@ elif page == "Diseño de la programación":
             unsafe_allow_html=True,
         )
         with st.container(border=True):
-            from st_aggrid import AgGrid, GridOptionsBuilder
+            from st_aggrid import AgGrid, ColumnsAutoSizeMode, GridOptionsBuilder
             from tools.indicadores_logro import matriz_sa_ce
             from tools.situaciones_informe import (
                 _fmt_pct2,
@@ -668,23 +673,34 @@ elif page == "Diseño de la programación":
                 [_pct_h.get(sa, 0.0) for sa in sa_rows_m],
             )
 
-            mx_tab, mx_gra = st.columns([3, 1.4], gap="medium")
+            mx_tab, mx_gra = st.columns([4, 1.25], gap="medium")
 
             with mx_tab:
                 _mx_df = pd.DataFrame(_body, columns=_headers)
                 _mx_df.insert(1, "Título", [_dsa.get(sa, "") for sa in sa_rows_m] + [""])
                 _gb = GridOptionsBuilder.from_dataframe(_mx_df)
-                _gb.configure_default_column(editable=False, resizable=True, sortable=False,
-                                             filter=False, width=78)
+                _gb.configure_default_column(
+                    editable=False, resizable=True, sortable=False, filter=False,
+                    minWidth=64, cellStyle={"textAlign": "center"},
+                )
                 _gb.configure_column("Título", hide=True)
-                _gb.configure_column("SA", pinned="left", width=64, tooltipField="Título")
-                _gb.configure_column("Total (IL)", pinned="right", width=90)
-                _gb.configure_column("% SA (horas)", pinned="right", width=100)
-                _gb.configure_grid_options(enableBrowserTooltips=True, tooltipShowDelay=300, rowHeight=28)
+                _gb.configure_column("SA", pinned="left", width=56, tooltipField="Título",
+                                     cellStyle={"fontWeight": "600", "textAlign": "center"})
+                _gb.configure_column("Total (IL)", pinned="right", width=92,
+                                     cellStyle={"fontWeight": "600", "textAlign": "center"})
+                _gb.configure_column("% SA (horas)", pinned="right", width=104,
+                                     cellStyle={"fontWeight": "600", "textAlign": "center"})
+                _gb.configure_grid_options(
+                    enableBrowserTooltips=True, tooltipShowDelay=300, rowHeight=28,
+                    suppressColumnVirtualisation=True,
+                )
                 AgGrid(
                     _mx_df, gridOptions=_gb.build(), allow_unsafe_jscode=True,
-                    fit_columns_on_grid_load=False, height=430, theme="balham",
-                    update_on=[], key="mx_grid",
+                    fit_columns_on_grid_load=False,
+                    columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
+                    custom_css=AGGRID_GRID_CSS,
+                    height=min(430, 34 + 28 * len(_body)),
+                    theme="balham", update_on=[], key="mx_grid",
                 )
                 components.html(
                     build_html_table_copy_html(

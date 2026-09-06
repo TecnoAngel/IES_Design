@@ -146,29 +146,65 @@ def build_sa_compare_png(
     return buffer.getvalue()
 
 
+# Tonos suaves para el rayado de filas (zebra), comunes a todas las tablas.
+ZEBRA_A = "#ffffff"
+ZEBRA_B = "#f5f3fb"
+GRID_LINE = "#d9d7e6"
+
+
 def render_word_table_html(headers: list[str], rows: list[list]) -> str:
     """Tabla HTML lista para pegar en Word (estilos en línea, sin CSS externo).
 
     Cabecera centrada horizontal y verticalmente; el resto de celdas centradas
-    verticalmente y alineadas a la izquierda."""
+    verticalmente y alineadas a la izquierda. Líneas de rejilla finas y filas
+    con tono alterno suave."""
     th = (
-        'style="border:1px solid #666;padding:5px 9px;background:#000;color:#fff;'
+        f'style="border:1px solid {GRID_LINE};padding:5px 9px;background:#000;color:#fff;'
         'text-align:center;vertical-align:middle;font-family:Calibri,Arial,sans-serif;"'
     )
-    td = (
-        'style="border:1px solid #666;padding:4px 9px;text-align:left;'
-        'vertical-align:middle;font-family:Calibri,Arial,sans-serif;"'
-    )
+
+    def _td(bg):
+        return (
+            f'style="border:1px solid {GRID_LINE};padding:4px 9px;text-align:left;'
+            f'vertical-align:middle;background:{bg};font-family:Calibri,Arial,sans-serif;"'
+        )
+
     body = []
-    for row in rows:
+    for i, row in enumerate(rows):
+        bg = ZEBRA_B if i % 2 else ZEBRA_A
         cells = "".join(
-            f"<td {td}>{'' if v is None else html_lib.escape(str(v))}</td>" for v in row
+            f"<td {_td(bg)}>{'' if v is None else html_lib.escape(str(v))}</td>" for v in row
         )
         body.append(f"<tr>{cells}</tr>")
     head = "".join(f"<th {th}>{html_lib.escape(str(h))}</th>" for h in headers)
     return (
         '<table style="border-collapse:collapse;">'
         f"<thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>"
+    )
+
+
+# CSS para las rejillas AgGrid.
+AGGRID_LINES_CSS = {  # solo líneas verticales finas (para rejillas con color propio)
+    ".ag-cell": {"border-right": f"1px solid {GRID_LINE} !important"},
+    ".ag-header-cell": {"border-right": f"1px solid {GRID_LINE} !important"},
+}
+AGGRID_GRID_CSS = {  # líneas verticales + rayado de filas suave
+    **AGGRID_LINES_CSS,
+    ".ag-row-odd": {"background-color": f"{ZEBRA_B} !important"},
+    ".ag-row-even": {"background-color": f"{ZEBRA_A} !important"},
+}
+
+
+def zebra_styler(df):
+    """Styler para `st.dataframe`: filas con tono alterno suave y rejilla fina."""
+    sty = df.style.set_table_styles(
+        [{"selector": "td, th", "props": [("border", f"1px solid {GRID_LINE}")]}]
+    )
+    return sty.apply(
+        lambda col: [
+            f"background-color: {ZEBRA_B if i % 2 else ZEBRA_A}" for i in range(len(col))
+        ],
+        axis=0,
     )
 
 
