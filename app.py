@@ -116,7 +116,7 @@ st.markdown("")
 # st.tabs no conserva la pestaña activa entre reruns (cada clic en un botón
 # devuelve la vista a la primera pestaña), así que la navegación se hace con
 # un widget normal atado a session_state para que sea persistente.
-PAGES = ["Inicio", "Diseño de la programación", "LOMLOE", "Actividades", "Programación de aula"]
+PAGES = ["Inicio", "Diseño de la programación", "Elementos curriculares", "Actividades", "Programación de aula"]
 page = st.segmented_control(
     "Navegación",
     PAGES,
@@ -129,7 +129,7 @@ page = st.segmented_control(
 # ── Barra global del Excel de programación: cargar / descargar desde cualquier
 #    pestaña. La descarga se rellena luego (dl_box), cuando la pestaña activa ya
 #    ha calculado los cambios.
-from tools.indicadores_logro import read_indicadores
+from tools.indicadores_logro import read_elementos_curriculares, read_indicadores
 from tools.indicadores_logro import recompute as il_recompute
 from tools.situaciones_aprendizaje import TRIMESTRES, read_situaciones
 
@@ -162,6 +162,7 @@ if prog_excel is not None and st.session_state.get("prog_loaded_name") != prog_e
         st.session_state.il_ce_ced = _il["ce_ced"]
         st.session_state.il_ce_p = _il["ce_p"]
         st.session_state.il_aux = _il["aux"]
+        st.session_state.elementos = read_elementos_curriculares(prog_excel)
         st.session_state.prog_loaded_name = prog_excel.name
         st.session_state.pop("prog_out", None)
     except Exception as exc:
@@ -923,14 +924,71 @@ elif page == "Diseño de la programación":
                     use_container_width=True, key="dl_cmp_png",
                 )
 
-# PÁGINA: LOMLOE
-elif page == "LOMLOE":
+# PÁGINA: ELEMENTOS CURRICULARES
+elif page == "Elementos curriculares":
     st.markdown(
-        '<div class="panel-card"><h3>LOMLOE</h3>'
-        "<p>Consulta y edición de los elementos curriculares LOMLOE de la hoja "
-        "<code>LOMLOE</code> del Excel. En construcción.</p></div>",
+        '<div class="panel-card"><h3>Elementos curriculares</h3>'
+        "<p>Contenidos de la materia y contenidos transversales (hoja "
+        "<code>LOMLOE</code>). Se marca en verde cada elemento que ya está "
+        "asignado a algún indicador de logro (en su columna CON o CT), igual que "
+        "el aviso de la hoja de Excel.</p></div>",
         unsafe_allow_html=True,
     )
+
+    if prog_excel is None or "elementos" not in st.session_state:
+        st.info("Sube el Excel de programación en la barra de arriba.")
+    else:
+        from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+        from tools.indicadores_logro import usados_en_il
+        from tools.situaciones_informe import AGGRID_GRID_CSS
+
+        _el = st.session_state.elementos
+        _il_state = st.session_state.get("il_pending") or st.session_state.get("il_rows") or []
+        _con_used = usados_en_il(_il_state, "CON")
+        _ct_used = usados_en_il(_il_state, "CT")
+
+        _solo_falta = st.toggle("Ver solo los que faltan por asignar", value=False, key="ec_solo_falta")
+
+        _green = JsCode(
+            "function(p){return (p.data && p.data.__ok) "
+            "? {'background-color':'#d7f0dc'} : null}"
+        )
+
+        def _render(items, key_field, label_field, header_cod, used_set, grid_key):
+            rows = []
+            for it in items:
+                cod = it[key_field]
+                ok = cod.replace(" ", "") in used_set
+                rows.append({"__ok": ok, header_cod: cod, "Descripción": it[label_field],
+                             "Asignado": "Sí" if ok else "—"})
+            n_ok = sum(1 for r in rows if r["__ok"])
+            st.caption(f"{n_ok} de {len(rows)} asignados · {len(rows) - n_ok} sin asignar")
+            if _solo_falta:
+                rows = [r for r in rows if not r["__ok"]]
+            if not rows:
+                st.success("Todos asignados.")
+                return
+            df = pd.DataFrame(rows, columns=["__ok", header_cod, "Descripción", "Asignado"])
+            gb = GridOptionsBuilder.from_dataframe(df)
+            gb.configure_default_column(editable=False, resizable=True, sortable=True, filter=False)
+            gb.configure_column("__ok", hide=True)
+            gb.configure_column(header_cod, width=90, pinned="left")
+            gb.configure_column("Descripción", flex=1, minWidth=280, tooltipField="Descripción")
+            gb.configure_column("Asignado", width=90)
+            gb.configure_grid_options(enableBrowserTooltips=True, tooltipShowDelay=300,
+                                      rowHeight=28, getRowStyle=_green)
+            AgGrid(df, gridOptions=gb.build(), allow_unsafe_jscode=True,
+                   fit_columns_on_grid_load=False, custom_css=AGGRID_GRID_CSS,
+                   height=min(460, 44 + 28 * len(df)), theme="balham",
+                   update_on=[], key=grid_key)
+
+        st.markdown('<div class="block-head">Contenidos de la materia</div>', unsafe_allow_html=True)
+        with st.container(border=True):
+            _render(_el["contenidos"], "cod", "desc", "Código", _con_used, "ec_grid_con")
+
+        st.markdown('<div class="block-head">Contenidos transversales</div>', unsafe_allow_html=True)
+        with st.container(border=True):
+            _render(_el["transversales"], "num", "desc", "Nº", _ct_used, "ec_grid_ct")
 
 # PÁGINA: ACTIVIDADES
 elif page == "Actividades":

@@ -38,6 +38,7 @@ SHEET_NAME = "IndicadoresLogro"
 TABLE_NAME = "TablaIndicadoresLogro"
 CRITERIOS_SHEET_PREFIX = "CriteriosEvaluaci"
 AUX_SHEET = "TablasAuxiliares"
+LOMLOE_SHEET = "LOMLOE"
 
 COLUMNS = ["CE", "CED", "IL", "PIL", "PIL%", "DIL", "DO", "CON", "CT", "IE", "CC", "AE", "SA"]
 COL_LETTER = {name: chr(ord("A") + i) for i, name in enumerate(COLUMNS)}
@@ -174,6 +175,53 @@ def _split_tokens(value: Any) -> list[str]:
         if tok:
             out.append(tok)
     return out
+
+
+def _norm_token(value: Any) -> str:
+    return re.sub(r"\s+", "", str(value or ""))
+
+
+def usados_en_il(rows: list[dict], field: str) -> set[str]:
+    """Conjunto de códigos (sin espacios) que aparecen en la columna `field`
+    (``CON`` o ``CT``) de algún indicador de logro. Réplica del check que hace
+    el formato condicional de la hoja LOMLOE."""
+    out: set[str] = set()
+    for r in rows:
+        for tok in str(r.get(field) or "").split(","):
+            tok = _norm_token(tok)
+            if tok:
+                out.add(tok)
+    return out
+
+
+def read_elementos_curriculares(source: Any) -> dict:
+    """Lee las celdas de la hoja LOMLOE (no es tabla): contenidos de la materia
+    (col A código, col B descripción) y contenidos transversales (col D nº,
+    col E descripción). El nº de filas puede variar según la materia."""
+    payload = _read_source_bytes(source)
+    wb = load_workbook(BytesIO(payload), data_only=True)
+    ws = _find_sheet(wb, LOMLOE_SHEET)
+    if ws is None:
+        return {"contenidos": [], "transversales": []}
+
+    contenidos: list[dict] = []
+    transversales: list[dict] = []
+    seen_header = False
+    for row in ws.iter_rows(values_only=True):
+        a = row[0] if len(row) > 0 else None
+        b = row[1] if len(row) > 1 else None
+        d = row[3] if len(row) > 3 else None
+        e = row[4] if len(row) > 4 else None
+        if not seen_header:
+            if _s(a).upper().startswith("CONTENIDO"):
+                seen_header = True
+            continue
+        if a not in (None, ""):
+            contenidos.append({"cod": _s(a), "desc": _s(b)})
+        if d not in (None, ""):
+            num = str(int(d)) if isinstance(d, float) and d.is_integer() else _s(d)
+            transversales.append({"num": num, "desc": _s(e)})
+    return {"contenidos": contenidos, "transversales": transversales}
 
 
 def matriz_sa_ce(
