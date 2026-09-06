@@ -322,9 +322,15 @@ elif page == "Diseño de la programación":
             sa_del_flags = [_truthy(r.get("X")) for _, r in _sg.iterrows()]
 
             if sa_add_click:
-                st.session_state.sa_grid_rows = _sa_recompute(
-                    sa_pending + [{"SA": None, "EV": None, "DSA": "", "HSA": None}]
+                _rows = _sa_recompute(sa_pending)
+                _exist = [r["SA"] for r in _rows if r["SA"] is not None]
+                _rows.append(
+                    {
+                        "SA": (max(_exist) + 1) if _exist else 1,
+                        "EV": None, "DSA": "", "HSA": None, "PCT": 0.0,
+                    }
                 )
+                st.session_state.sa_grid_rows = _rows
                 st.session_state.sa_nonce += 1
                 st.session_state.pop("prog_out", None)
                 st.rerun()
