@@ -165,7 +165,7 @@ st.markdown("")
 # st.tabs no conserva la pestaña activa entre reruns (cada clic en un botón
 # devuelve la vista a la primera pestaña), así que la navegación se hace con
 # un widget normal atado a session_state para que sea persistente.
-PAGES = ["Inicio", "Diseño de la programación", "Elementos curriculares", "Actividades", "Programación de aula"]
+PAGES = ["Inicio", "Diseño de la programación", "Elementos curriculares", "Programación de aula"]
 page = st.segmented_control(
     "Navegación",
     PAGES,
@@ -213,9 +213,83 @@ if prog_excel is not None and st.session_state.get("prog_loaded_name") != prog_e
         st.session_state.il_aux = _il["aux"]
         st.session_state.elementos = read_elementos_curriculares(prog_excel)
         st.session_state.prog_loaded_name = prog_excel.name
-        st.session_state.pop("prog_out", None)
+        # al cambiar de archivo, se descartan los estados canónicos derivados
+        for _k in (
+            "prog_out", "sa_grid_rows", "ce_rows", "il_pending",
+            "pa_datos", "pa_sa_edits", "pa_acts", "pa_docx",
+        ):
+            st.session_state.pop(_k, None)
     except Exception as exc:
         st.error(f"No se ha podido leer el Excel: {exc}")
+
+
+def _guardar_todo() -> bytes:
+    """Aplica sobre el Excel subido todos los cambios en sesión (situaciones,
+    criterios, indicadores y programación de aula) y devuelve los bytes."""
+    from io import BytesIO as _B
+
+    from tools.indicadores_logro import save_criterios, save_indicadores
+    from tools.situaciones_aprendizaje import Situacion, save_situaciones
+
+    ss = st.session_state
+    data = prog_excel.getvalue()
+
+    if "sa_grid_rows" in ss:
+        sits_g = [
+            Situacion(sa=r["SA"], ev=r["EV"], dsa=r["DSA"], hsa=r["HSA"])
+            for r in ss.sa_grid_rows
+        ]
+        prev_g = {
+            t: float(ss.get(f"sa_prev_{t}", ss.get("sa_previstas", {}).get(t, 0.0)))
+            for t in TRIMESTRES
+        }
+        data = save_situaciones(_B(data), sits_g, prev_g)
+
+    il_g = il_recompute(
+        ss.get("il_pending", ss.get("il_rows", [])), ss.il_ce_ced, ss.il_ce_list
+    )
+    data = save_indicadores(_B(data), il_g, ss.il_ce_ced, ss.il_ce_list)
+
+    ce_p_g = {r["CE"]: r["P"] for r in ss.get("ce_rows", [])} or dict(ss.il_ce_p)
+    data = save_criterios(_B(data), ce_p_g, ss.il_ce_list)
+
+    if "pa_datos" in ss:
+        from tools.programacion_aula_editor import (
+            save_actividades,
+            save_datos_generales,
+            save_p_aula_sa,
+        )
+
+        data = save_datos_generales(_B(data), dict(ss.pa_datos))
+        for _col, _vals in ss.get("pa_sa_edits", {}).items():
+            data = save_p_aula_sa(_B(data), _col, _vals)
+        _pil = {r["IL"]: float(r["PIL"] or 0) for r in il_g}
+        data = save_actividades(_B(data), ss.get("pa_acts", []), _pil)
+
+    return data
+
+
+# ── Botón global "Guardar Excel" en la barra de arriba (todas las pestañas).
+with dl_box:
+    if prog_excel is not None:
+        if st.button("Guardar Excel", type="primary", use_container_width=True, key="btn_save_all"):
+            try:
+                st.session_state.prog_out = _guardar_todo()
+                st.session_state.prog_msg = ""
+            except Exception as exc:
+                st.session_state.prog_msg = f"Error al generar el Excel: {exc}"
+                st.session_state.pop("prog_out", None)
+        if st.session_state.get("prog_msg"):
+            st.caption(f"⚠️ {st.session_state.prog_msg}")
+        if st.session_state.get("prog_out"):
+            st.download_button(
+                "Descargar .xlsx",
+                data=st.session_state.prog_out,
+                file_name=prog_excel.name.rsplit(".", 1)[0] + "_actualizado.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="dlb_prog",
+            )
 
 # PÁGINA: INICIO
 if page == "Inicio":
@@ -834,41 +908,6 @@ elif page == "Diseño de la programación":
                     hide_index=True,
                 )
 
-        # ───────────────── DESCARGA GLOBAL (barra de arriba) ─────────────────
-        with dl_box:
-            if st.button("Guardar Excel", type="primary", use_container_width=True, key="btn_save_all"):
-                probs = errores + il_errores
-                if probs:
-                    st.session_state.prog_msg = "Corrige los avisos antes de guardar."
-                    st.session_state.pop("prog_out", None)
-                else:
-                    try:
-                        from tools.indicadores_logro import save_criterios
-
-                        _data = save_situaciones(prog_excel, sits, previstas)
-                        _il = il_recompute(
-                            st.session_state.get("il_pending", st.session_state.il_rows),
-                            ce_ced, ce_list,
-                        )
-                        _data = save_indicadores(BytesIO(_data), _il, ce_ced, ce_list)
-                        _data = save_criterios(BytesIO(_data), dict(ce_pending), ce_list)
-                        st.session_state.prog_out = _data
-                        st.session_state.prog_msg = ""
-                    except Exception as exc:
-                        st.session_state.prog_msg = f"Error al generar el Excel: {exc}"
-                        st.session_state.pop("prog_out", None)
-            if st.session_state.get("prog_msg"):
-                st.caption(f"⚠️ {st.session_state.prog_msg}")
-            if st.session_state.get("prog_out"):
-                st.download_button(
-                    "Descargar .xlsx",
-                    data=st.session_state.prog_out,
-                    file_name=prog_excel.name.rsplit(".", 1)[0] + "_actualizado.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                    key="dlb_prog",
-                )
-
         # ─────── BLOQUE: DISTRIBUCIÓN DE PORCENTAJES POR CE Y SA ───────
         st.markdown(
             '<div class="block-head">Distribución de porcentajes por criterios de '
@@ -1041,59 +1080,231 @@ elif page == "Elementos curriculares":
         with st.container(border=True):
             _render(_el["transversales"], "num", "desc", "Nº", _ct_used, "ec_grid_ct")
 
-# PÁGINA: ACTIVIDADES
-elif page == "Actividades":
+# PÁGINA: PROGRAMACIÓN DE AULA
+elif page == "Programación de aula":
     st.markdown(
-        '<div class="panel-card"><h3>Actividades</h3>'
-        "<p>Editor de la tabla <code>TablaActividades</code> (actividades por "
-        "situación de aprendizaje y su peso). En construcción.</p></div>",
+        '<div class="panel-card"><h3>Programación de aula</h3>'
+        "<p>Datos generales del grupo, actividades por situación de aprendizaje y "
+        "campos de la programación de aula. Genera el documento Word con la "
+        "plantilla por defecto o con una tuya.</p></div>",
         unsafe_allow_html=True,
     )
 
-# PÁGINA: PROGRAMACIÓN DE AULA
-elif page == "Programación de aula":
-    st.markdown('<div class="panel-card"><h3>Programación de aula</h3><p>Se leerá un Excel con los datos del grupo y las situaciones de aprendizaje, y se generará el documento Word de la programación de aula.</p></div>', unsafe_allow_html=True)
+    if prog_excel is None:
+        st.info("Sube el Excel de programación en la barra de arriba para empezar.")
+    else:
+        from io import BytesIO
 
-    st.markdown("### Archivos")
-
-    pa_excel = st.file_uploader(
-        "Excel de datos (hojas 'Datos generales' y 'Situaciones de aprendizaje')",
-        type=["xlsx", "xlsm"],
-        key="pa_excel_uploader",
-    )
-    pa_template = st.file_uploader(
-        "Plantilla Word (opcional, se usará la plantilla por defecto si no se sube)",
-        type=["docx"],
-        key="pa_template_uploader",
-    )
-
-    st.divider()
-
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        if st.button("Generar programación", use_container_width=True, type="primary", key="btn_gen_pa"):
-            if pa_excel is None:
-                st.error("Necesitas subir el Excel de datos.")
-            else:
-                try:
-                    from tools.programacion_aula import run_programacion_aula
-
-                    docx_bytes = run_programacion_aula(pa_excel, pa_template)
-                    st.session_state.pa_docx = docx_bytes
-                    st.success("Proceso completado.")
-                except Exception as exc:
-                    st.error(f"Error al generar la programación: {exc}")
-
-    with col2:
-        if st.button("Limpiar", use_container_width=True, key="btn_clear_pa"):
-            st.session_state.pop("pa_docx", None)
-            st.rerun()
-
-    if st.session_state.get("pa_docx"):
-        st.download_button(
-            "Descargar programación (Word)",
-            data=st.session_state.pa_docx,
-            file_name="programacion_aula.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            use_container_width=True,
+        from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+        from tools.programacion_aula import run_programacion_aula
+        from tools.programacion_aula_editor import recompute_actividades, valores_actividades
+        from tools.programacion_aula_editor import read_prog_aula
+        from tools.situaciones_informe import (
+            AGGRID_GRID_CSS,
+            build_html_table_copy_html,
+            render_word_table_html,
         )
+
+        ss = st.session_state
+        if "pa_datos" not in ss:
+            _pa = read_prog_aula(prog_excel)
+            ss.pa_datos = dict(_pa["datos"])
+            ss.pa_campos_datos = [k for k, _ in _pa["datos"]]
+            ss.pa_sa_campos = _pa["sa_campos"]
+            ss.pa_sa_cols = _pa["sa_cols"]
+            ss.pa_acts = _pa["actividades"]
+            ss.pa_sa_edits = {}
+        ss.setdefault("pa_nonce", 0)
+
+        _il_state = ss.get("il_pending") or ss.get("il_rows") or []
+        _il_sa = {r["IL"]: r["SA"] for r in _il_state}
+        _pil_por_il = {r["IL"]: float(r["PIL"] or 0) for r in _il_state}
+        _ce_p = {r["CE"]: r["P"] for r in ss.get("ce_rows", [])} or dict(ss.get("il_ce_p", {}))
+
+        _src = ss.get("sa_grid_rows")
+        if _src:
+            _sa_opts = [(r["SA"], r["DSA"]) for r in _src if r["SA"] is not None]
+        else:
+            _sa_opts = [
+                (int(v[0]), str(v[2] or ""))
+                for v in ss.sa_df.itertuples(index=False) if not pd.isna(v[0])
+            ]
+
+        def _hum(k):
+            return k.replace("_", " ").strip().capitalize()
+
+        # ── Generar programación de aula
+        gc1, gc2 = st.columns([2.2, 1.6])
+        _tpl = gc1.file_uploader("Plantilla Word (opcional)", type=["docx"], key="pa_tpl")
+        if gc2.button("Generar programación de aula", use_container_width=True, type="primary", key="pa_gen"):
+            try:
+                _upd = _guardar_todo()
+                ss.pa_docx = run_programacion_aula(BytesIO(_upd), _tpl)
+                ss.pa_gen_msg = ""
+            except Exception as exc:
+                ss.pa_gen_msg = f"No se ha podido generar: {exc}"
+                ss.pop("pa_docx", None)
+        if ss.get("pa_gen_msg"):
+            st.error(ss.pa_gen_msg)
+        if ss.get("pa_docx"):
+            st.download_button(
+                "Descargar programación (Word)", data=ss.pa_docx,
+                file_name="programacion_aula.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+
+        # ── BLOQUE: Datos generales
+        st.markdown('<div class="block-head">Datos generales</div>', unsafe_allow_html=True)
+        _LARGOS = {
+            "alumnos_atencion_individualizada", "caracteristicas_fisicas_cognitivas_afectivas",
+            "nivel_competencia_curricular", "otras_caracteristicas_grupo",
+            "resultados_evaluacion_inicial", "conclusiones_evaluacion_inicial",
+            "resultados_evaluacion_aprendizajes", "revision_programacion",
+        }
+        with st.container(border=True):
+            _cortos = [k for k in ss.pa_campos_datos if k not in _LARGOS]
+            _cc = st.columns(2)
+            for i, k in enumerate(_cortos):
+                ss.pa_datos[k] = _cc[i % 2].text_input(_hum(k), value=ss.pa_datos.get(k, ""), key=f"pad_{k}")
+            for k in ss.pa_campos_datos:
+                if k in _LARGOS:
+                    ss.pa_datos[k] = st.text_area(_hum(k), value=ss.pa_datos.get(k, ""), key=f"pad_{k}", height=90)
+
+        # ── BLOQUE: Actividades por situación de aprendizaje
+        st.markdown(
+            '<div class="block-head">Diseño de actividades por situación de aprendizaje</div>',
+            unsafe_allow_html=True,
+        )
+        with st.container(border=True):
+            _lbl = {sa: f"{sa}: {d}" for sa, d in _sa_opts}
+            sa_sel = st.selectbox(
+                "Situación de aprendizaje", [sa for sa, _ in _sa_opts],
+                format_func=lambda s: _lbl.get(s, str(s)), key="pa_sa_sel",
+            )
+            _ils_sa = [r["IL"] for r in _il_state if r["SA"] == sa_sel]
+
+            _acts_sa = [a for a in ss.pa_acts if a.get("IL") in _ils_sa]
+            _acts_otras = [a for a in ss.pa_acts if a.get("IL") not in _ils_sa]
+
+            st.markdown(
+                f'<div class="mini-label">Actividades de los IL de esta SA '
+                f"({', '.join(_ils_sa) or '—'}) · solo se añaden/quitan de estos IL · "
+                "A (código) y PA%/FACTOR se recalculan al pulsar Actualizar</div>",
+                unsafe_allow_html=True,
+            )
+            pc1, pc2, pc3, pc4 = st.columns([1.4, 1.3, 1.2, 3])
+            _add_il = pc1.selectbox("IL", _ils_sa or ["—"], key="pa_add_il", label_visibility="collapsed")
+            _pa_add = pc2.button("Añadir actividad", use_container_width=True, key="pa_add")
+            _pa_del = pc3.button("Borrar marcadas", use_container_width=True, key="pa_del")
+            _pa_upd = pc4.button("Actualizar", use_container_width=True, type="primary", key="pa_upd")
+
+            _rc = recompute_actividades(_acts_sa, _pil_por_il)
+            _adf = pd.DataFrame(
+                [
+                    {"X": False, "IL": r["IL"], "A": r["A"], "DA": r["DA"],
+                     "PA": r["PA"], "PA%": r["PA%"] * 100, "FACTOR": r["FACTOR"]}
+                    for r in _rc
+                ],
+                columns=["X", "IL", "A", "DA", "PA", "PA%", "FACTOR"],
+            )
+            _adf["X"] = _adf["X"].astype(bool)
+            _agb = GridOptionsBuilder.from_dataframe(_adf)
+            _agb.configure_default_column(editable=True, resizable=True, sortable=False, filter=False)
+            _agb.configure_column("X", headerName="", width=44, pinned="left",
+                                  cellRenderer="agCheckboxCellRenderer",
+                                  cellEditor="agCheckboxCellEditor", cellDataType="boolean")
+            _agb.configure_column("IL", width=84, cellDataType="text", cellEditor="agSelectCellEditor",
+                                  cellEditorParams={"values": _ils_sa})
+            _agb.configure_column("A", editable=False, width=96)
+            _agb.configure_column("DA", headerName="Descripción", flex=1, minWidth=240,
+                                  cellDataType="text", tooltipField="DA")
+            _agb.configure_column("PA", headerName="Peso", width=80, cellDataType="number", type=["numericColumn"])
+            _agb.configure_column("PA%", editable=False, width=84,
+                                  valueFormatter=JsCode("function(p){return p.value==null?'':Number(p.value).toFixed(1)+' %'}"))
+            _agb.configure_column("FACTOR", editable=False, width=90,
+                                  valueFormatter=JsCode("function(p){return p.value==null?'':Number(p.value).toFixed(3)}"))
+            _agb.configure_grid_options(enableBrowserTooltips=True, rowHeight=30)
+            _agrid = AgGrid(
+                _adf, gridOptions=_agb.build(), update_on=[("cellValueChanged", 300)],
+                allow_unsafe_jscode=True, fit_columns_on_grid_load=False,
+                custom_css=AGGRID_GRID_CSS, height=min(360, 42 + 30 * max(len(_adf), 1)),
+                theme="balham", key=f"pa_acts_grid_{sa_sel}_{ss.pa_nonce}",
+            )
+            _ag = pd.DataFrame(_agrid["data"])
+            if _ag.empty or "IL" not in _ag.columns:
+                _ag = _adf.copy()
+            _pend = [
+                {
+                    "IL": "" if pd.isna(r.get("IL")) else str(r.get("IL")),
+                    "A": "" if pd.isna(r.get("A")) else str(r.get("A")),
+                    "DA": "" if pd.isna(r.get("DA")) else str(r.get("DA")),
+                    "PA": None if r.get("PA") in (None, "") or pd.isna(r.get("PA")) else float(r.get("PA")),
+                }
+                for _, r in _ag.iterrows()
+            ]
+            _delf = [str(r.get("X")).strip().lower() in ("true", "1", "yes") for _, r in _ag.iterrows()]
+
+            def _commit_acts(nuevas_sa):
+                ss.pa_acts = _acts_otras + [
+                    {"IL": r["IL"], "A": r["A"], "DA": r["DA"], "PA": r["PA"]}
+                    for r in recompute_actividades(nuevas_sa, _pil_por_il)
+                ]
+                ss.pa_nonce += 1
+                ss.pop("prog_out", None)
+                ss.pop("pa_docx", None)
+                st.rerun()
+
+            if _pa_add and _ils_sa:
+                _commit_acts(_pend + [{"IL": _add_il, "A": "", "DA": "", "PA": 1}])
+            if _pa_del and any(_delf):
+                _commit_acts([p for p, d in zip(_pend, _delf) if not d])
+            if _pa_upd:
+                _commit_acts(_pend)
+
+            # Campos de la programación de aula para esta SA (columna de P_Aula_SA)
+            _col = None
+            if 1 <= sa_sel <= len(ss.pa_sa_cols):
+                _entry = ss.pa_sa_cols[sa_sel - 1]
+                _col = _entry["col"]
+                _base = _entry["valores"]
+            if _col:
+                st.markdown("**Campos de la programación de aula para esta SA**")
+                _cur = ss.pa_sa_edits.get(_col, dict(_base))
+                for campo in ss.pa_sa_campos:
+                    _cur[campo] = st.text_area(
+                        _hum(campo), value=_cur.get(campo, ""),
+                        key=f"pasa_{_col}_{campo}", height=70,
+                    )
+                ss.pa_sa_edits[_col] = _cur
+            else:
+                st.caption("Esta SA no tiene columna en la tabla P_Aula_SA del Excel.")
+
+        # ── BLOQUE: Resumen de actividades por SA (tabla dinámica de INFORMES)
+        st.markdown(
+            '<div class="block-head">Resumen de actividades por situación de aprendizaje</div>',
+            unsafe_allow_html=True,
+        )
+        with st.container(border=True):
+            _val = valores_actividades(ss.pa_acts, _il_state, _ce_p)
+            _val_sa = [a for a in _val if a.get("SA") == sa_sel]
+            _rheaders = ["A", "Descripción", "Valor s/ programación", "Valor s/ SA"]
+            _rrows = [
+                [
+                    a["A"], a["DA"],
+                    f"{a['valor_prog'] * 100:.2f}".replace(".", ",") + " %",
+                    f"{a['valor_sa'] * 100:.2f}".replace(".", ",") + " %",
+                ]
+                for a in _val_sa
+            ]
+            if _rrows:
+                st.dataframe(pd.DataFrame(_rrows, columns=_rheaders),
+                            use_container_width=True, hide_index=True)
+                components.html(
+                    build_html_table_copy_html(
+                        render_word_table_html(_rheaders, _rrows),
+                        btn_id="pa-res-copy", fn="paResCopy", label="Copiar tabla (Word)",
+                    ),
+                    height=40,
+                )
+            else:
+                st.caption("Aún no hay actividades para esta situación de aprendizaje.")
