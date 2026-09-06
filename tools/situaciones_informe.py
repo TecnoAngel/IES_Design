@@ -85,6 +85,7 @@ def build_pie_png(shares: list[dict], *, dpi: int = 150) -> bytes:
             "Distribución de horas por situación de aprendizaje",
             fontsize=12,
             fontweight="bold",
+            color=JCYL_RED,
             pad=16,
         )
         ax.legend(
@@ -126,13 +127,14 @@ def build_sa_compare_png(
     if n:
         y = np.arange(n)[::-1]  # SA 1 arriba
         h = 0.4
-        ax.barh(y + h / 2, [p * 100 for p in pct_il], h, label="Según IL", color="#764ba2")
-        ax.barh(y - h / 2, [p * 100 for p in pct_horas], h, label="Según horas", color="#f0a500")
+        ax.barh(y + h / 2, [p * 100 for p in pct_il], h, label="Según IL", color=JCYL_RED)
+        ax.barh(y - h / 2, [p * 100 for p in pct_horas], h, label="Según horas", color=JCYL_GOLD)
         ax.set_yticks(y)
         ax.set_yticklabels(labels, fontsize=7)
         ax.set_xlabel("% sobre el total", fontsize=8)
         ax.tick_params(axis="x", labelsize=7)
-        ax.set_title("Peso de la SA: IL vs. horas", fontsize=9, fontweight="bold", pad=8)
+        ax.set_title("Peso de la SA: IL vs. horas", fontsize=9, fontweight="bold",
+                     color=JCYL_RED, pad=8)
         ax.legend(fontsize=7, frameon=False, loc="lower right")
         ax.spines[["top", "right"]].set_visible(False)
         ax.xaxis.grid(True, color="#e6e6e6")
@@ -147,9 +149,12 @@ def build_sa_compare_png(
 
 
 # Tonos suaves para el rayado de filas (zebra), comunes a todas las tablas.
+# Tonos del tema Junta de Castilla y León (crema del oro) para el rayado.
 ZEBRA_A = "#ffffff"
-ZEBRA_B = "#f5f3fb"
-GRID_LINE = "#d9d7e6"
+ZEBRA_B = "#faf2e4"
+GRID_LINE = "#e6d8c6"
+JCYL_RED = "#a6182e"
+JCYL_GOLD = "#e0a21c"
 
 
 def render_word_table_html(headers: list[str], rows: list[list]) -> str:

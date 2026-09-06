@@ -11,7 +11,32 @@ ROOT = Path(__file__).resolve().parent
 sys.path.append(str(ROOT))
 
 
-st.set_page_config(page_title="IES Manager", page_icon="🗂️", layout="wide")
+def _favicon():
+    """Escudo (corona + blasón) recortado del logo de la Junta, cuadrado."""
+    logo = ROOT / "logo_junta.jpg"
+    if not logo.exists():
+        return "🗂️"
+    try:
+        from PIL import Image
+
+        im = Image.open(logo).convert("RGB")
+        w, h = im.size
+        emblem = im.crop((int(w * 0.045), int(h * 0.02), int(w * 0.35), int(h * 0.62)))
+        side = max(emblem.size)
+        square = Image.new("RGB", (side, side), "white")
+        square.paste(emblem, ((side - emblem.width) // 2, (side - emblem.height) // 2))
+        return square
+    except Exception:
+        return "🗂️"
+
+
+st.set_page_config(page_title="IES Manager", page_icon=_favicon(), layout="wide")
+
+if (ROOT / "logo_junta.jpg").exists():
+    try:
+        st.logo(str(ROOT / "logo_junta.jpg"))
+    except Exception:
+        pass
 
 # Aviso claro si se ha lanzado con el entorno equivocado (p. ej. el venv de otro
 # proyecto que VSCode dejó activo): faltarían dependencias.
@@ -35,18 +60,27 @@ if _faltan:
 st.markdown(
     """
     <style>
+    /* Paleta Junta de Castilla y León (del logo): rojo carmín + oro. */
+    :root {
+        --jcyl-red: #A6182E;
+        --jcyl-red-2: #C01848;
+        --jcyl-gold: #E0A21C;
+        --jcyl-ink: #221C18;
+        --jcyl-cream: #FAF4EC;
+        --jcyl-line: #E6D8C6;
+    }
     .topbar {
         padding: 1.1rem 1.2rem;
         border-radius: 16px;
-        background: linear-gradient(135deg, #ff006f 0%, #0047ab 50%, #1a1a1a 100%);
+        background: linear-gradient(115deg, #8f1526 0%, #b41f3a 45%, #d99a1e 118%);
         color: white;
         margin-bottom: 1rem;
-        box-shadow: 0 6px 18px rgba(255,0,111,0.25);
+        box-shadow: 0 6px 18px rgba(166,24,46,0.28);
     }
     .topbar-title { font-size: 1.8rem; font-weight: 700; line-height: 1.1; }
     .topbar-sub { font-size: 0.95rem; opacity: 0.95; margin-top: 0.35rem; }
     .section-title {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(120deg, var(--jcyl-red) 0%, var(--jcyl-gold) 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
@@ -58,30 +92,29 @@ st.markdown(
     .panel-card {
         border-radius: 14px;
         padding: 1rem 1.1rem;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        box-shadow: 0 2px 10px rgba(166,24,46,0.10);
+        background: #ffffff;
+        border: 1px solid var(--jcyl-line);
+        border-left: 4px solid var(--jcyl-red);
+        color: #333333;
     }
     .panel-card h3 {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(120deg, var(--jcyl-red) 0%, var(--jcyl-gold) 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
         margin-top: 0;
-    }
-    .panel-card {
-        background: #ffffff;
-        border: 1px solid #e7e2f2;
-        color: #333333;
     }
     /* Cabecera de bloque dentro de una pestaña con varios apartados apilados. */
     .block-head {
         font-size: 1.12rem;
         font-weight: 700;
         color: #ffffff;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(100deg, #a6182e 0%, #c1304c 70%, #d99a1e 140%);
         padding: 0.5rem 0.9rem;
         border-radius: 10px;
         margin: 1.6rem 0 0.7rem 0;
-        box-shadow: 0 3px 10px rgba(102,126,234,0.25);
+        box-shadow: 0 3px 10px rgba(166,24,46,0.22);
     }
     .block-head .block-sub {
         font-weight: 400;
@@ -93,13 +126,19 @@ st.markdown(
     /* Realza los contenedores con borde de Streamlit como "tarjetas". */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 12px !important;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+        box-shadow: 0 2px 10px rgba(166,24,46,0.08);
     }
     .mini-label {
         font-size: 0.8rem;
         font-weight: 600;
-        opacity: 0.75;
+        opacity: 0.78;
         margin-bottom: 0.2rem;
+    }
+    /* Navegación: pastilla activa en rojo JCyL. */
+    div[data-baseweb="segmented-control"] [aria-checked="true"],
+    button[kind="segmented_controlActive"] {
+        background: var(--jcyl-red) !important;
+        color: #fff !important;
     }
     </style>
     <div class="topbar">
@@ -674,7 +713,7 @@ elif page == "Diseño de la programación":
                 tooltipShowDelay=300,
                 getRowStyle=JsCode(
                     "function(p){return (p.data && p.data.__shade) "
-                    "? {'background-color':'#ece6f9'} : null}"
+                    "? {'background-color':'#f6ead6'} : null}"
                 ),
                 rowHeight=30,
             )
