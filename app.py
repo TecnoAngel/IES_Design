@@ -13,6 +13,25 @@ sys.path.append(str(ROOT))
 
 st.set_page_config(page_title="IES Manager", page_icon="🗂️", layout="wide")
 
+# Aviso claro si se ha lanzado con el entorno equivocado (p. ej. el venv de otro
+# proyecto que VSCode dejó activo): faltarían dependencias.
+import importlib.util
+
+_faltan = [
+    m for m in ("matplotlib", "openpyxl", "st_aggrid", "docxtpl")
+    if importlib.util.find_spec(m) is None
+]
+if _faltan:
+    st.error(
+        "Faltan dependencias: **" + ", ".join(_faltan) + "**.\n\n"
+        "Seguramente has lanzado la app con el entorno virtual de otro proyecto. "
+        "Desde `IES_Manager`, ejecútala con su propio venv:\n\n"
+        "```\n.\\.venv\\Scripts\\python.exe -m streamlit run app.py --server.port 8502\n```\n\n"
+        "o directamente `.\\run_app.bat`. Si falta el venv: "
+        "`python -m venv .venv ; .venv\\Scripts\\python.exe -m pip install -r requirements.txt`."
+    )
+    st.stop()
+
 st.markdown(
     """
     <style>
