@@ -273,27 +273,35 @@ elif page == "Diseño de la programación":
                     [
                         {
                             "X": False,
-                            "SA": r["SA"], "EV": r["EV"], "DSA": r["DSA"],
-                            "HSA": r["HSA"], "% horas": r["PCT"],
+                            "SA": r["SA"],
+                            "EV": "" if r["EV"] in (None, "") else str(int(r["EV"])),
+                            "DSA": "" if r["DSA"] is None else str(r["DSA"]),
+                            "HSA": r["HSA"],
+                            "% horas": r["PCT"],
                         }
                         for r in st.session_state.sa_grid_rows
                     ],
                     columns=["X", "SA", "EV", "DSA", "HSA", "% horas"],
                 )
                 _sa_df["X"] = _sa_df["X"].astype(bool)
+                _sa_df["EV"] = _sa_df["EV"].astype(str)
+                _sa_df["DSA"] = _sa_df["DSA"].astype(str)
                 _gb = GridOptionsBuilder.from_dataframe(_sa_df)
                 _gb.configure_default_column(editable=True, resizable=True, sortable=False, filter=False)
                 _gb.configure_column("X", headerName="", editable=True, width=44, pinned="left",
                                      cellRenderer="agCheckboxCellRenderer",
                                      cellEditor="agCheckboxCellEditor", cellDataType="boolean")
-                _gb.configure_column("SA", headerName="SA (nº)", width=82, type=["numericColumn"])
-                _gb.configure_column("EV", headerName="EV (trim.)", width=96,
+                _gb.configure_column("SA", headerName="SA (nº)", width=82, cellDataType="number",
+                                     type=["numericColumn"])
+                _gb.configure_column("EV", headerName="EV (trim.)", width=96, cellDataType="text",
                                      cellEditor="agSelectCellEditor",
-                                     cellEditorParams={"values": [str(t) for t in TRIMESTRES]})
-                _gb.configure_column("DSA", headerName="Descripción", flex=1, minWidth=220, tooltipField="DSA")
-                _gb.configure_column("HSA", headerName="Horas", width=82, type=["numericColumn"])
+                                     cellEditorParams={"values": [""] + [str(t) for t in TRIMESTRES]})
+                _gb.configure_column("DSA", headerName="Descripción", flex=1, minWidth=220,
+                                     cellDataType="text", tooltipField="DSA")
+                _gb.configure_column("HSA", headerName="Horas", width=82, cellDataType="number",
+                                     type=["numericColumn"])
                 _gb.configure_column(
-                    "% horas", editable=False, width=94,
+                    "% horas", editable=False, width=94, cellDataType="number",
                     valueFormatter=JsCode(
                         "function(p){return p.value==null?'':Number(p.value).toFixed(1)+' %'}"
                     ),
