@@ -349,39 +349,40 @@ elif page == "Diseño de la programación":
                 for r in rows
             ]
 
-        from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
+        from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
         st.session_state.setdefault("il_nonce", 0)
+
+        def _parse_grid_row(r):
+            return {
+                "CE": "" if pd.isna(r.get("CE")) else str(r.get("CE")).strip(),
+                "CED": "", "IL": "",
+                "PIL": None if r.get("PIL") in (None, "") or pd.isna(r.get("PIL")) else float(r.get("PIL")),
+                "DIL": "" if pd.isna(r.get("DIL")) else str(r.get("DIL")),
+                "DO": "" if pd.isna(r.get("DO")) else str(r.get("DO")),
+                "CON": "" if pd.isna(r.get("CON")) else str(r.get("CON")),
+                "CT": "" if pd.isna(r.get("CT")) else str(r.get("CT")),
+                "IE": "" if pd.isna(r.get("IE")) else str(r.get("IE")),
+                "CC": "" if pd.isna(r.get("CC")) else str(r.get("CC")),
+                "AE": "" if pd.isna(r.get("AE")) else str(r.get("AE")),
+                "SA": None if r.get("SA") in (None, "") or pd.isna(r.get("SA")) else int(float(r.get("SA"))),
+            }
 
         with st.container(border=True):
             st.markdown(
                 '<div class="mini-label">CE se elige de la lista · CED e IL (4.2.1, 4.2.2…) '
                 "son automáticos · PIL a mano, PIL% automático · SA solo entre las de arriba · "
-                "las filas se agrupan solas por criterio (no hace falta reordenarlas)</div>",
+                "escribe libremente y pulsa <b>Actualizar</b> para agrupar por criterio y "
+                "renumerar (los cambios no se pierden hasta entonces)</div>",
                 unsafe_allow_html=True,
             )
 
-            ac1, ac2, ac3, ac4 = st.columns([2, 1, 1.7, 1.7])
+            ac1, ac2, ac3, ac4, ac5 = st.columns([1.7, 0.8, 1.5, 1.6, 1.3])
             add_ce = ac1.selectbox("Criterio", ce_list, key="il_add_ce", label_visibility="collapsed")
             add_n = ac2.number_input("nº", 1, 20, 1, key="il_add_n", label_visibility="collapsed")
-            add_click = ac3.button("Añadir indicador(es)", use_container_width=True)
-            del_click = ac4.button("Borrar filas seleccionadas", use_container_width=True)
-
-            if add_click:
-                for _ in range(int(add_n)):
-                    st.session_state.il_rows.append(
-                        {
-                            "CE": add_ce, "CED": "", "IL": "", "PIL": 1,
-                            "DIL": "", "DO": "", "CON": "", "CT": "",
-                            "IE": "", "CC": "", "AE": "", "SA": None,
-                        }
-                    )
-                st.session_state.il_rows = il_recompute(
-                    st.session_state.il_rows, ce_ced, ce_list
-                )
-                st.session_state.il_nonce += 1
-                st.session_state.pop("prog_out", None)
-                st.rerun()
+            add_click = ac3.button("Añadir al criterio", use_container_width=True)
+            del_click = ac4.button("Borrar seleccionadas", use_container_width=True)
+            upd_click = ac5.button("Actualizar", use_container_width=True, type="primary")
 
             il_df = pd.DataFrame(
                 [
@@ -448,7 +449,7 @@ elif page == "Diseño de la programación":
             grid = AgGrid(
                 il_df,
                 gridOptions=gb.build(),
-                update_mode=GridUpdateMode.MODEL_CHANGED,
+                update_on=[("cellValueChanged", 400), "selectionChanged"],
                 allow_unsafe_jscode=True,
                 fit_columns_on_grid_load=False,
                 height=430,
@@ -456,42 +457,59 @@ elif page == "Diseño de la programación":
                 key=f"il_grid_{st.session_state.il_nonce}",
             )
 
+            # Lo que hay ahora mismo en la rejilla (en su orden actual, sin agrupar).
             grid_df = pd.DataFrame(grid["data"])
+            if grid_df.empty:
+                grid_df = il_df.copy()
+            pending = [_parse_grid_row(r) for _, r in grid_df.iterrows()]
+            st.session_state.il_pending = pending
+
             sel = grid["selected_rows"]
             sel_ids = set()
             if sel is not None:
                 sel_records = sel.to_dict("records") if isinstance(sel, pd.DataFrame) else sel
                 sel_ids = {int(s["__id"]) for s in sel_records if s.get("__id") is not None}
-
-            def _parse(r):
-                return {
-                    "CE": "" if pd.isna(r["CE"]) else str(r["CE"]).strip(),
-                    "CED": "", "IL": "",
-                    "PIL": None if r["PIL"] in (None, "") or pd.isna(r["PIL"]) else float(r["PIL"]),
-                    "DIL": "" if pd.isna(r["DIL"]) else str(r["DIL"]),
-                    "DO": "" if pd.isna(r["DO"]) else str(r["DO"]),
-                    "CON": "" if pd.isna(r["CON"]) else str(r["CON"]),
-                    "CT": "" if pd.isna(r["CT"]) else str(r["CT"]),
-                    "IE": "" if pd.isna(r["IE"]) else str(r["IE"]),
-                    "CC": "" if pd.isna(r["CC"]) else str(r["CC"]),
-                    "AE": "" if pd.isna(r["AE"]) else str(r["AE"]),
-                    "SA": None if r["SA"] in (None, "") or pd.isna(r["SA"]) else int(float(r["SA"])),
-                }
-
-            il_raw = [
-                _parse(r)
+            grid_ids = [
+                int(r["__id"]) if not pd.isna(r.get("__id")) else -1
                 for _, r in grid_df.iterrows()
-                if not (del_click and int(r["__id"]) in sel_ids)
             ]
-            il_new = il_recompute(il_raw, ce_ced, ce_list)
-            if del_click or _il_sig(il_new) != _il_sig(st.session_state.il_rows):
-                st.session_state.il_rows = il_new
+
+            # Botones (reruns "de golpe", no molestos): reconstruyen la tabla ya
+            # agrupada y renumerada, y remontan la rejilla (cambia il_nonce).
+            if add_click:
+                base = list(pending)
+                for _ in range(int(add_n)):
+                    base.append(
+                        {
+                            "CE": add_ce, "CED": "", "IL": "", "PIL": 1,
+                            "DIL": "", "DO": "", "CON": "", "CT": "",
+                            "IE": "", "CC": "", "AE": "", "SA": None,
+                        }
+                    )
+                st.session_state.il_rows = il_recompute(base, ce_ced, ce_list)
                 st.session_state.il_nonce += 1
                 st.session_state.pop("prog_out", None)
                 st.rerun()
 
+            if del_click and sel_ids:
+                kept = [p for p, i in zip(pending, grid_ids) if i not in sel_ids]
+                st.session_state.il_rows = il_recompute(kept, ce_ced, ce_list)
+                st.session_state.il_nonce += 1
+                st.session_state.pop("prog_out", None)
+                st.rerun()
+
+            if upd_click:
+                st.session_state.il_rows = il_recompute(pending, ce_ced, ce_list)
+                st.session_state.il_nonce += 1
+                st.session_state.pop("prog_out", None)
+                st.rerun()
+
+            # ¿Hay ediciones sin agrupar/renumerar?
+            if _il_sig(il_recompute(pending, ce_ced, ce_list)) != _il_sig(st.session_state.il_rows):
+                st.info("Hay cambios en la tabla. Pulsa **Actualizar** para agrupar por criterio y renumerar los IL.")
+
             il_errores = []
-            for i, r in enumerate(st.session_state.il_rows, start=1):
+            for i, r in enumerate(pending, start=1):
                 if not r["CE"]:
                     il_errores.append(f"Fila {i}: falta el criterio (CE).")
                 elif r["CE"] not in ce_ced:
@@ -513,7 +531,11 @@ elif page == "Diseño de la programación":
                 else:
                     try:
                         _data = save_situaciones(prog_excel, sits, previstas)
-                        _data = save_indicadores(BytesIO(_data), st.session_state.il_rows, ce_ced, ce_list)
+                        _il = il_recompute(
+                            st.session_state.get("il_pending", st.session_state.il_rows),
+                            ce_ced, ce_list,
+                        )
+                        _data = save_indicadores(BytesIO(_data), _il, ce_ced, ce_list)
                         st.session_state.prog_out = _data
                         st.session_state.prog_msg = ""
                     except Exception as exc:
