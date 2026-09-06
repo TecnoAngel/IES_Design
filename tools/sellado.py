@@ -1,13 +1,9 @@
-"""Sello de fecha/hora y versión en el Excel al guardar.
+"""Sello de fecha/hora en el Excel al guardar.
 
 Se guarda como un *nombre definido* oculto en ``xl/workbook.xml``
-(``IES_DISENO_ACTUALIZADO``). Al volver a guardar:
-
-* si la fecha-hora (al minuto) coincide con la del sello anterior → sube la
-  versión (V1 → V2 → …);
-* si no coincide → vuelve a empezar en V1 con la nueva fecha-hora.
-
-Si el Excel cargado ya trae el sello, se borra y se pone el nuevo.
+(``IES_DISENO_ACTUALIZADO``), con la fecha-hora al minuto. Si el Excel cargado ya
+lo trae, se borra y se pone el nuevo. El nombre de descarga lleva delante
+``AAAAMMDD_HHMM_``.
 """
 
 from __future__ import annotations
@@ -33,29 +29,20 @@ def leer_sello(xlsx_bytes: bytes) -> str | None:
     return inner or None
 
 
-def _parse(sello: str | None):
-    if not sello:
-        return None, 0
-    md = re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", sello)
-    mv = re.search(r"[Vv](\d+)", sello)
-    return (md.group(0) if md else None), (int(mv.group(1)) if mv else 0)
-
-
 def etiqueta_archivo(sello: str) -> str:
-    """'2026-09-06 18:45 · V1' -> '2026-09-06_18-45_V1' (para el nombre de fichero)."""
-    s = sello.replace(":", "-")
-    return re.sub(r"[^0-9A-Za-z-]+", "_", s).strip("_")
+    """'2026-09-06 19:20' -> '20260906_1920' (prefijo del nombre de fichero)."""
+    d = re.sub(r"\D", "", sello)
+    if len(d) >= 12:
+        return f"{d[:8]}_{d[8:12]}"
+    return re.sub(r"[^0-9A-Za-z]+", "_", sello).strip("_")
 
 
 def sellar(xlsx_bytes: bytes, *, ahora: datetime | None = None) -> tuple[bytes, str]:
-    """Devuelve (bytes con el sello nuevo, texto del sello)."""
+    """Devuelve (bytes con el sello nuevo, texto del sello 'AAAA-MM-DD HH:MM')."""
     z = zipfile.ZipFile(BytesIO(xlsx_bytes))
     wb = z.read("xl/workbook.xml").decode("utf-8")
 
-    prev_dt, prev_v = _parse(leer_sello(xlsx_bytes))
-    momento = (ahora or datetime.now()).strftime("%Y-%m-%d %H:%M")
-    version = prev_v + 1 if prev_dt == momento else 1
-    sello = f"{momento} · V{version}"
+    sello = (ahora or datetime.now()).strftime("%Y-%m-%d %H:%M")
 
     dn = f'<definedName name="{MARCA}" hidden="1">"{sello}"</definedName>'
     wb = _RE_DN.sub("", wb)

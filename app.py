@@ -430,7 +430,7 @@ with dl_box:
 
             _sello = st.session_state.get("prog_sello", "")
             _base = prog_excel.name.rsplit(".", 1)[0]
-            _fname = f"{_base}_{etiqueta_archivo(_sello)}.xlsx" if _sello else f"{_base}_actualizado.xlsx"
+            _fname = f"{etiqueta_archivo(_sello)}_{_base}.xlsx" if _sello else f"{_base}_actualizado.xlsx"
             st.download_button(
                 "Descargar .xlsx",
                 data=st.session_state.prog_out,
