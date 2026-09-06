@@ -443,14 +443,112 @@ elif page == "Diseño de la programación":
             if errores:
                 st.warning("Situaciones — avisos:\n\n- " + "\n- ".join(errores))
 
-        # ───────────────── BLOQUE: INDICADORES DE LOGRO ─────────────────
-        st.markdown('<div class="block-head">Indicadores de logro</div>', unsafe_allow_html=True)
-
         ce_list = st.session_state.il_ce_list
         ce_ced = st.session_state.il_ce_ced
-        ce_p = st.session_state.get("il_ce_p", {})
         aux = st.session_state.il_aux
         sa_options = sorted({s.sa for s in sits if s.sa})
+
+        # ───────────────── BLOQUE: CRITERIOS DE EVALUACIÓN ─────────────────
+        st.markdown('<div class="block-head">Criterios de evaluación</div>', unsafe_allow_html=True)
+
+        with st.container(border=True):
+            from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+
+            st.session_state.setdefault("ce_nonce", 0)
+            _ce_p0 = st.session_state.get("il_ce_p", {})
+
+            def _ce_recompute(pairs):
+                total = sum(p for _, p in pairs if p)
+                return [
+                    {
+                        "CE": ce, "CED": ce_ced.get(ce, ""),
+                        "P": p, "PCT": (p / total if (p and total) else 0.0),
+                    }
+                    for ce, p in pairs
+                ]
+
+            if "ce_rows" not in st.session_state:
+                st.session_state.ce_rows = _ce_recompute(
+                    [(ce, float(_ce_p0.get(ce, 0.0))) for ce in ce_list]
+                )
+
+            st.markdown(
+                '<div class="mini-label">Solo se puede modificar el <b>peso P</b> '
+                "(hasta 2 decimales) · no se añaden ni quitan criterios · %CE se "
+                "recalcula al pulsar Actualizar</div>",
+                unsafe_allow_html=True,
+            )
+            _cc1, _ = st.columns([1.2, 5])
+            ce_upd_click = _cc1.button("Actualizar", use_container_width=True, type="primary", key="ce_upd")
+
+            ce_grid_col, ce_side_col = st.columns([3.4, 1.6], gap="medium")
+            with ce_grid_col:
+                _ce_df = pd.DataFrame(
+                    [
+                        {"CE": r["CE"], "CED": r["CED"], "P": r["P"], "%CE": r["PCT"] * 100}
+                        for r in st.session_state.ce_rows
+                    ],
+                    columns=["CE", "CED", "P", "%CE"],
+                )
+                _cgb = GridOptionsBuilder.from_dataframe(_ce_df)
+                _cgb.configure_default_column(editable=False, resizable=True, sortable=False, filter=False)
+                _cgb.configure_column("CE", width=70, pinned="left")
+                _cgb.configure_column("CED", width=230, cellDataType="text", tooltipField="CED")
+                _cgb.configure_column(
+                    "P", editable=True, width=90, cellDataType="number", type=["numericColumn"],
+                    valueParser=JsCode(
+                        "function(p){var n=parseFloat(String(p.newValue).replace(',','.'));"
+                        "return isNaN(n)?0:Math.round(n*100)/100}"
+                    ),
+                    valueFormatter=JsCode(
+                        "function(p){return p.value==null?'':Number(p.value).toFixed(2)}"
+                    ),
+                )
+                _cgb.configure_column(
+                    "%CE", width=88,
+                    valueFormatter=JsCode(
+                        "function(p){return p.value==null?'':Number(p.value).toFixed(2)+' %'}"
+                    ),
+                )
+                _cgb.configure_grid_options(enableBrowserTooltips=True, tooltipShowDelay=300, rowHeight=28)
+                _ce_grid = AgGrid(
+                    _ce_df, gridOptions=_cgb.build(),
+                    update_on=[("cellValueChanged", 300)],
+                    allow_unsafe_jscode=True, fit_columns_on_grid_load=False,
+                    custom_css=AGGRID_GRID_CSS,
+                    height=min(460, 42 + 28 * len(_ce_df)),
+                    theme="balham", key=f"ce_grid_{st.session_state.ce_nonce}",
+                )
+
+            _cg = pd.DataFrame(_ce_grid["data"])
+            if _cg.empty or "CE" not in _cg.columns:
+                _cg = _ce_df.copy()
+            ce_pending = [
+                (
+                    str(r["CE"]),
+                    0.0 if r["P"] in (None, "") or pd.isna(r["P"]) else round(float(r["P"]), 2),
+                )
+                for _, r in _cg.iterrows()
+            ]
+            _sum_p_live = sum(p for _, p in ce_pending if p)
+            _sum_p_canon = sum(r["P"] for r in st.session_state.ce_rows if r["P"])
+
+            with ce_side_col:
+                st.metric("Σ pesos (P)", f"{_sum_p_live:g}")
+                if abs(_sum_p_live - _sum_p_canon) > 1e-9:
+                    st.caption("Pulsa **Actualizar** para refrescar la columna %CE de esta tabla.")
+
+            if ce_upd_click:
+                st.session_state.ce_rows = _ce_recompute(ce_pending)
+                st.session_state.ce_nonce += 1
+                st.session_state.pop("prog_out", None)
+                st.rerun()
+
+        # Pesos vigentes (en vivo desde la rejilla) para todos los cálculos.
+        ce_p = dict(ce_pending)
+
+        # ───────────────── BLOQUE: INDICADORES DE LOGRO ─────────────────
+        st.markdown('<div class="block-head">Indicadores de logro</div>', unsafe_allow_html=True)
 
         def _with_existing(options, key):
             # Los SelectboxColumn de Streamlit fallan si una celda tiene un valor
@@ -695,12 +793,15 @@ elif page == "Diseño de la programación":
                     st.session_state.pop("prog_out", None)
                 else:
                     try:
+                        from tools.indicadores_logro import save_criterios
+
                         _data = save_situaciones(prog_excel, sits, previstas)
                         _il = il_recompute(
                             st.session_state.get("il_pending", st.session_state.il_rows),
                             ce_ced, ce_list,
                         )
                         _data = save_indicadores(BytesIO(_data), _il, ce_ced, ce_list)
+                        _data = save_criterios(BytesIO(_data), dict(ce_pending), ce_list)
                         st.session_state.prog_out = _data
                         st.session_state.prog_msg = ""
                     except Exception as exc:

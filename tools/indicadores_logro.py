@@ -471,3 +471,64 @@ def save_indicadores(
         for item in src.infolist():
             dst.writestr(item, replacements.get(item.filename, src.read(item.filename)))
     return out.getvalue()
+
+
+CRITERIOS_TABLE = "TablaCriteriosEvaluacion"
+
+
+def _find_sheet_path_prefix(zf: zipfile.ZipFile, prefix: str) -> str:
+    wb = zf.read("xl/workbook.xml").decode("utf-8")
+    m = re.search(rf'<sheet[^>]*name="({re.escape(prefix)}[^"]*)"[^>]*r:id="([^"]+)"', wb)
+    rid = m.group(2)
+    rels = zf.read("xl/_rels/workbook.xml.rels").decode("utf-8")
+    target = re.search(
+        rf'<Relationship[^>]*Id="{re.escape(rid)}"[^>]*Target="([^"]+)"', rels
+    ).group(1).lstrip("/")
+    return target if target.startswith("xl/") else "xl/" + target.replace("../", "")
+
+
+def save_criterios(source: Any, ce_p: dict[str, float], ce_order: list[str]) -> bytes:
+    """Reescribe solo la columna de pesos P de `TablaCriteriosEvaluacion`
+    (mismo nº de filas: aquí no se añaden ni quitan criterios)."""
+    payload = _read_source_bytes(source)
+    src = zipfile.ZipFile(BytesIO(payload))
+
+    sheet_path = _find_sheet_path_prefix(src, CRITERIOS_SHEET_PREFIX)
+    table_path = _find_table_path(src, CRITERIOS_TABLE)
+    sheet_xml = src.read(sheet_path).decode("utf-8")
+
+    first_row = 5
+    if table_path:
+        ref = re.search(r'<table[^>]*\sref="[A-Z]+(\d+):', src.read(table_path).decode("utf-8"))
+        if ref:
+            first_row = int(ref.group(1)) + 1
+
+    for i, ce in enumerate(ce_order):
+        if ce not in ce_p:
+            continue
+        row = first_row + i
+        val = _num_xml(ce_p[ce])
+        sheet_xml = re.sub(
+            rf'<c r="C{row}"[^>]*>(?:<v>[^<]*</v>)?</c>',
+            f'<c r="C{row}"><v>{val}</v></c>',
+            sheet_xml,
+            count=1,
+        )
+        # quita el valor en caché del P% de esa fila
+        sheet_xml = re.sub(
+            rf'(<c r="D{row}"[^>]*>(?:<f[^>]*>.*?</f>|<f[^>]*/>))<v>[^<]*</v>',
+            r"\g<1>",
+            sheet_xml,
+        )
+
+    replacements = {
+        sheet_path: sheet_xml.encode("utf-8"),
+        "xl/workbook.xml": _force_full_recalc(
+            src.read("xl/workbook.xml").decode("utf-8")
+        ).encode("utf-8"),
+    }
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            dst.writestr(item, replacements.get(item.filename, src.read(item.filename)))
+    return out.getvalue()
