@@ -949,9 +949,10 @@ elif page == "Elementos curriculares":
 
         _solo_falta = st.toggle("Ver solo los que faltan por asignar", value=False, key="ec_solo_falta")
 
-        _green = JsCode(
-            "function(p){return (p.data && p.data.__ok) "
-            "? {'background-color':'#d7f0dc'} : null}"
+        _rowstyle = JsCode(
+            "function(p){if(!p.data) return null;"
+            "return p.data.__ok ? {'background-color':'#dff2e2'} "
+            ": {'background-color':'#fce4e4'}}"
         )
 
         def _render(items, key_field, label_field, header_cod, used_set, grid_key):
@@ -959,24 +960,25 @@ elif page == "Elementos curriculares":
             for it in items:
                 cod = it[key_field]
                 ok = cod.replace(" ", "") in used_set
-                rows.append({"__ok": ok, header_cod: cod, "Descripción": it[label_field],
-                             "Asignado": "Sí" if ok else "—"})
+                rows.append({"__ok": ok, "●": "🟢" if ok else "🔴",
+                             header_cod: cod, "Descripción": it[label_field]})
             n_ok = sum(1 for r in rows if r["__ok"])
-            st.caption(f"{n_ok} de {len(rows)} asignados · {len(rows) - n_ok} sin asignar")
+            st.caption(f"🟢 {n_ok} asignados · 🔴 {len(rows) - n_ok} sin asignar · {len(rows)} en total")
             if _solo_falta:
                 rows = [r for r in rows if not r["__ok"]]
             if not rows:
                 st.success("Todos asignados.")
                 return
-            df = pd.DataFrame(rows, columns=["__ok", header_cod, "Descripción", "Asignado"])
+            df = pd.DataFrame(rows, columns=["__ok", "●", header_cod, "Descripción"])
             gb = GridOptionsBuilder.from_dataframe(df)
             gb.configure_default_column(editable=False, resizable=True, sortable=True, filter=False)
             gb.configure_column("__ok", hide=True)
-            gb.configure_column(header_cod, width=90, pinned="left")
+            gb.configure_column("●", headerName="", width=46, pinned="left",
+                                cellStyle={"textAlign": "center"})
+            gb.configure_column(header_cod, width=88, pinned="left")
             gb.configure_column("Descripción", flex=1, minWidth=280, tooltipField="Descripción")
-            gb.configure_column("Asignado", width=90)
             gb.configure_grid_options(enableBrowserTooltips=True, tooltipShowDelay=300,
-                                      rowHeight=28, getRowStyle=_green)
+                                      rowHeight=28, getRowStyle=_rowstyle)
             AgGrid(df, gridOptions=gb.build(), allow_unsafe_jscode=True,
                    fit_columns_on_grid_load=False, custom_css=AGGRID_GRID_CSS,
                    height=min(460, 44 + 28 * len(df)), theme="balham",
