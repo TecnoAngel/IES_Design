@@ -553,18 +553,18 @@ elif page == "Diseño de la programación":
             _res = resumen_por_ce(
                 il_recompute(pending, ce_ced, ce_list), ce_list, ce_ced, ce_p
             )
-            _res_headers = ["CE", "Criterio de evaluación", "% CE", "IL", "Contenidos", "CT", "SA"]
+            _res_headers = ["CE", "%CE", "CONTENIDOS", "CT", "SA"]
             _res_rows = [
                 [
-                    r["CE"], r["CED"],
+                    r["CE"],
                     f"{r['pct'] * 100:.2f}".replace(".", ",") + " %",
-                    r["IL"], r["CONTENIDOS"], r["CT"], r["SA"],
+                    r["CONTENIDOS"], r["CT"], r["SA"],
                 ]
                 for r in _res
             ]
             _res_table = render_word_table_html(
                 _res_headers, _res_rows,
-                aligns=["center", "left", "center", "left", "left", "center", "center"],
+                aligns=["center", "center", "left", "center", "center"],
             )
             st.markdown('<div class="mini-label">Resumen por criterio</div>', unsafe_allow_html=True)
             components.html(
