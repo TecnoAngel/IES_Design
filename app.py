@@ -223,7 +223,34 @@ if prog_excel is not None and st.session_state.get("prog_loaded_name") != prog_e
         st.error(f"No se ha podido leer el Excel: {exc}")
 
 
-def _guardar_todo() -> bytes:
+def _sa_pares():
+    """(nº, descripción) de cada SA, ordenados por nº. Del estado editado si lo
+    hay, si no del Excel cargado."""
+    ss = st.session_state
+    rows = ss.get("sa_grid_rows")
+    if not rows and "sa_df" in ss:
+        rows = [
+            {"SA": None if pd.isna(v[0]) else int(v[0]), "DSA": str(v[2] or "")}
+            for v in ss.sa_df.itertuples(index=False)
+        ]
+    return sorted(
+        (r["SA"], r["DSA"]) for r in (rows or []) if r.get("SA") is not None
+    )
+
+
+def _estado_coherencia():
+    ss = st.session_state
+    sits = [{"SA": n, "DSA": d} for n, d in _sa_pares()]
+    return (
+        sits,
+        ss.get("il_ce_list", []),
+        ss.get("il_rows", []),
+        ss.get("pa_acts", []),
+        ss.get("pa_sa_cols", []),
+    )
+
+
+def _guardar_todo(regen_pasa: bool = False) -> bytes:
     """Aplica sobre el Excel subido todos los cambios en sesión (situaciones,
     criterios, indicadores y programación de aula) y devuelve los bytes."""
     from io import BytesIO as _B
@@ -261,24 +288,88 @@ def _guardar_todo() -> bytes:
         )
 
         data = save_datos_generales(_B(data), dict(ss.pa_datos))
-        for _col, _vals in ss.get("pa_sa_edits", {}).items():
-            data = save_p_aula_sa(_B(data), _col, _vals)
+        if regen_pasa:
+            from tools.consistencia import regenerar_p_aula_sa
+
+            data = regenerar_p_aula_sa(_B(data), [t for _, t in _sa_pares()])
+        else:
+            for _col, _vals in ss.get("pa_sa_edits", {}).items():
+                data = save_p_aula_sa(_B(data), _col, _vals)
         _pil = {r["IL"]: float(r["PIL"] or 0) for r in il_g}
         data = save_actividades(_B(data), ss.get("pa_acts", []), _pil)
 
     return data
 
 
+@st.dialog("Revisión de coherencia con las situaciones de aprendizaje", width="large")
+def _dlg_coherencia(issues, generar=False):
+    st.write(
+        "La tabla de **situaciones de aprendizaje** manda. Hay desajustes:"
+    )
+    for it in issues:
+        st.warning(f"**{it['titulo']}**\n\n{it['detalle']}")
+    _manual = [it for it in issues if not it.get("autofix")]
+    if _manual:
+        st.error(
+            "Algún desajuste no se puede arreglar solo. Corrígelo en el Excel y "
+            "vuelve a subirlo."
+        )
+    c1, c2 = st.columns(2)
+    if c1.button("Abortar — lo arreglo en Excel", use_container_width=True, key="dlg_abort"):
+        st.rerun()
+    if c2.button(
+        "Regenerar automáticamente", type="primary", use_container_width=True,
+        disabled=bool(_manual), key="dlg_regen",
+    ):
+        ss = st.session_state
+        from io import BytesIO as _B2
+
+        from tools.consistencia import add_il_para_ce, quitar_actividades_huerfanas
+
+        _ce_sin = next((it["datos"] for it in issues if it["clave"] == "ce_sin_il"), [])
+        _regen_pasa = any(it["clave"] == "pasa_desajuste" for it in issues)
+        if _ce_sin:
+            ss.il_rows = il_recompute(
+                add_il_para_ce(ss.il_rows, _ce_sin), ss.il_ce_ced, ss.il_ce_list
+            )
+            ss.pop("il_pending", None)
+        if any(it["clave"] == "act_huerfanas" for it in issues):
+            ss.pa_acts = quitar_actividades_huerfanas(ss.get("pa_acts", []), ss.il_rows)
+        try:
+            _data = _guardar_todo(regen_pasa=_regen_pasa)
+            ss.prog_out = _data
+            ss.prog_msg = ""
+            if _regen_pasa:
+                from tools.programacion_aula_editor import read_prog_aula
+
+                ss.pa_sa_cols = read_prog_aula(_B2(_data))["sa_cols"]
+                ss.pa_sa_edits = {}
+            if generar:
+                from tools.programacion_aula import run_programacion_aula
+
+                ss.pa_docx = run_programacion_aula(_B2(_data), ss.get("pa_tpl"))
+        except Exception as exc:
+            ss.prog_msg = f"Error al regenerar: {exc}"
+            ss.pop("prog_out", None)
+        st.rerun()
+
+
 # ── Botón global "Guardar Excel" en la barra de arriba (todas las pestañas).
 with dl_box:
     if prog_excel is not None:
         if st.button("Guardar Excel", type="primary", use_container_width=True, key="btn_save_all"):
-            try:
-                st.session_state.prog_out = _guardar_todo()
-                st.session_state.prog_msg = ""
-            except Exception as exc:
-                st.session_state.prog_msg = f"Error al generar el Excel: {exc}"
-                st.session_state.pop("prog_out", None)
+            from tools.consistencia import revisar
+
+            _iss = revisar(*_estado_coherencia())
+            if _iss:
+                _dlg_coherencia(_iss)
+            else:
+                try:
+                    st.session_state.prog_out = _guardar_todo()
+                    st.session_state.prog_msg = ""
+                except Exception as exc:
+                    st.session_state.prog_msg = f"Error al generar el Excel: {exc}"
+                    st.session_state.pop("prog_out", None)
         if st.session_state.get("prog_msg"):
             st.caption(f"⚠️ {st.session_state.prog_msg}")
         if st.session_state.get("prog_out"):
@@ -1145,13 +1236,19 @@ elif page == "Programación de aula":
         gc1, gc2 = st.columns([2.2, 1.6])
         _tpl = gc1.file_uploader("Plantilla Word (opcional)", type=["docx"], key="pa_tpl")
         if gc2.button("Generar programación de aula", use_container_width=True, type="primary", key="pa_gen"):
-            try:
-                _upd = _guardar_todo()
-                ss.pa_docx = run_programacion_aula(BytesIO(_upd), _tpl)
-                ss.pa_gen_msg = ""
-            except Exception as exc:
-                ss.pa_gen_msg = f"No se ha podido generar: {exc}"
-                ss.pop("pa_docx", None)
+            from tools.consistencia import revisar
+
+            _iss = revisar(*_estado_coherencia())
+            if _iss:
+                _dlg_coherencia(_iss, generar=True)
+            else:
+                try:
+                    _upd = _guardar_todo()
+                    ss.pa_docx = run_programacion_aula(BytesIO(_upd), _tpl)
+                    ss.pa_gen_msg = ""
+                except Exception as exc:
+                    ss.pa_gen_msg = f"No se ha podido generar: {exc}"
+                    ss.pop("pa_docx", None)
         if ss.get("pa_gen_msg"):
             st.error(ss.pa_gen_msg)
         if ss.get("pa_docx"):
