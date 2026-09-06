@@ -1219,7 +1219,9 @@ elif page == "Programación de aula":
             _adf = pd.DataFrame(
                 [
                     {"X": False, "IL": r["IL"], "A": r["A"], "DA": r["DA"],
-                     "PA": r["PA"], "PA%": r["PA%"] * 100, "FACTOR": r["FACTOR"]}
+                     "PA": r["PA"],
+                     "PA%": None if r["PA%"] is None else r["PA%"] * 100,
+                     "FACTOR": r["FACTOR"]}
                     for r in _rc
                 ],
                 columns=["X", "IL", "A", "DA", "PA", "PA%", "FACTOR"],
@@ -1244,7 +1246,8 @@ elif page == "Programación de aula":
             _agrid = AgGrid(
                 _adf, gridOptions=_agb.build(), update_on=[("cellValueChanged", 300)],
                 allow_unsafe_jscode=True, fit_columns_on_grid_load=False,
-                custom_css=AGGRID_GRID_CSS, height=min(360, 42 + 30 * max(len(_adf), 1)),
+                custom_css=AGGRID_GRID_CSS,
+                height=max(190, min(430, 95 + 33 * max(len(_adf), 1))),
                 theme="balham", key=f"pa_acts_grid_{sa_sel}_{ss.pa_nonce}",
             )
             _ag = pd.DataFrame(_agrid["data"])

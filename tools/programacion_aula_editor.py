@@ -160,18 +160,22 @@ def recompute_actividades(rows: list[dict], pil_por_il: dict[str, float]) -> lis
     for r in limpio:
         il = _s(r.get("IL"))
         pa = _num(r.get("PA"))
-        pa_f = float(pa) if pa is not None else 0.0
         cont[il] = cont.get(il, 0) + 1
         total = suma_pa.get(il, 0.0)
-        pa_pct = (pa_f / total) if total else 0.0
+        if pa is None:
+            pa_pct = None
+            factor = None
+        else:
+            pa_pct = (float(pa) / total) if total else 0.0
+            factor = pil_por_il.get(il, 0.0) * pa_pct
         out.append(
             {
                 "IL": il,
                 "A": f"{il}.{cont[il]}" if il else "",
                 "DA": _s(r.get("DA")),
-                "PA": pa if pa is not None else None,
+                "PA": pa,
                 "PA%": pa_pct,
-                "FACTOR": (pil_por_il.get(il, 0.0) * pa_pct),
+                "FACTOR": factor,
             }
         )
     return out
@@ -206,7 +210,7 @@ def valores_actividades(
         pce = ce_p.get(ce, 0.0)
         a["SA"] = il_sa.get(il)
         a["valor_prog"] = (
-            a["PA%"]
+            (a["PA%"] or 0.0)
             * (il_pil.get(il, 0.0) / spil if spil else 0.0)
             * (pce / total_p if total_p else 0.0)
         )
