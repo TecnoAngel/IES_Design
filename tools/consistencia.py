@@ -95,31 +95,27 @@ def revisar(
             }
         )
 
-    # 3) P_Aula_SA: una columna por SA, emparejadas por título
-    n_sa = len(sa_nums)
-    titulos_col = {_norm(c.get("valores", {}).get("titulo")) for c in pa_sa_cols}
+    # 3) P_Aula_SA: columnas huérfanas (de una SA que ya no existe y con
+    #    contenido). Añadir columnas para SA nuevas se hace solo al guardar,
+    #    no es un problema que haya que decidir.
     titulos_sa = {_norm(t) for t in sa_titulos}
-    sa_sin_col = [t for t in sa_titulos if _norm(t) not in titulos_col]
-    col_sin_sa = [
+    huerfanas = [
         _s(c.get("valores", {}).get("titulo")) or _s(c.get("nombre"))
         for c in pa_sa_cols
         if _norm(c.get("valores", {}).get("titulo")) not in titulos_sa
+        and any(v for k, v in c.get("valores", {}).items() if k != "titulo")
     ]
-    if sa_sin_col or col_sin_sa or len(pa_sa_cols) != n_sa:
-        det = []
-        if sa_sin_col:
-            det.append("SA sin columna: " + ", ".join(sa_sin_col))
-        if col_sin_sa:
-            det.append("Columnas que ya no son de ninguna SA: " + ", ".join(col_sin_sa))
-        det.append(
-            "Regenerar deja una columna por SA (en orden), con su título, "
-            "conservando el contenido de las que cuadran por título."
-        )
+    if huerfanas:
         issues.append(
             {
                 "clave": "pasa_desajuste",
-                "titulo": "La tabla P_Aula_SA no coincide con las situaciones de aprendizaje",
-                "detalle": " · ".join(det),
+                "titulo": "P_Aula_SA tiene columnas de situaciones que ya no existen",
+                "detalle": (
+                    "Columnas sin SA (¿renombraste o borraste una situación?): "
+                    + ", ".join(huerfanas)
+                    + ". Si regeneras se pierde su contenido; si vas a renombrar, "
+                    "hazlo antes en el Excel."
+                ),
                 "autofix": "regen_pasa",
                 "datos": sa_titulos,
             }
@@ -216,10 +212,18 @@ def _txt(ref: str, value: str) -> str:
     )
 
 
-def regenerar_p_aula_sa(source: Any, sa_titulos: list[str]) -> bytes:
-    """Reconstruye Tabla9 con una columna por SA. Conserva el contenido de las
-    columnas que ya existían en la misma posición; las nuevas van en blanco
-    salvo la fila ``titulo``."""
+def regenerar_p_aula_sa(
+    source: Any,
+    sa_titulos: list[str],
+    edits: dict[str, dict[str, str]] | None = None,
+) -> bytes:
+    """Reconstruye Tabla9 con una columna por SA (en orden), con su título.
+
+    Para cada columna se usan, por prioridad: los valores de ``edits`` (dict
+    ``{titulo_normalizado: {campo: valor}}``), o el contenido de la columna que
+    ya tenía ese título en el Excel; las SA nuevas van en blanco.
+    """
+    edits = {_norm(k): v for k, v in (edits or {}).items()}
     payload = _read_bytes(source)
     src = zipfile.ZipFile(BytesIO(payload))
     sp = _find_sheet_path(src, SA_SHEET)
@@ -256,8 +260,9 @@ def regenerar_p_aula_sa(source: Any, sa_titulos: list[str]) -> bytes:
         cells = [_txt(f"A{r}", campo)]
         for j in range(n):
             col = _col_letter(2 + j)
-            prev = old_by_titulo.get(_norm(sa_titulos[j]), {})
-            val = prev.get(campo, "")
+            key = _norm(sa_titulos[j])
+            src_vals = edits.get(key) or old_by_titulo.get(key, {})
+            val = src_vals.get(campo, "")
             if campo == "titulo":
                 val = sa_titulos[j] or val
             cells.append(_txt(f"{col}{r}", val))

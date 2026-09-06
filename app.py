@@ -264,7 +264,7 @@ if prog_excel is not None and st.session_state.get("prog_loaded_name") != prog_e
         st.error(f"No se ha podido leer el Excel: {exc}")
 
 
-def _guardar_todo(regen_pasa: bool = False) -> bytes:
+def _guardar_todo() -> bytes:
     """Aplica sobre el Excel subido todos los cambios en sesión (situaciones,
     criterios, indicadores y programación de aula) y devuelve los bytes."""
     from io import BytesIO as _B
@@ -295,20 +295,16 @@ def _guardar_todo(regen_pasa: bool = False) -> bytes:
     data = save_criterios(_B(data), ce_p_g, ss.il_ce_list)
 
     if "pa_datos" in ss:
-        from tools.programacion_aula_editor import (
-            save_actividades,
-            save_datos_generales,
-            save_p_aula_sa,
-        )
+        from tools.consistencia import regenerar_p_aula_sa
+        from tools.programacion_aula_editor import save_actividades, save_datos_generales
 
         data = save_datos_generales(_B(data), dict(ss.pa_datos))
-        if regen_pasa:
-            from tools.consistencia import regenerar_p_aula_sa
-
-            data = regenerar_p_aula_sa(_B(data), [t for _, t in _sa_pares()])
-        else:
-            for _col, _vals in ss.get("pa_sa_edits", {}).items():
-                data = save_p_aula_sa(_B(data), _col, _vals)
+        # P_Aula_SA se reconstruye siempre desde la lista de SA actual: así las
+        # SA nuevas obtienen su columna automáticamente. Se aplican las ediciones
+        # de sesión (por título) y se conserva lo demás por título.
+        data = regenerar_p_aula_sa(
+            _B(data), [t for _, t in _sa_pares()], edits=ss.get("pa_sa_edits", {})
+        )
         _pil = {r["IL"]: float(r["PIL"] or 0) for r in il_g}
         data = save_actividades(_B(data), ss.get("pa_acts", []), _pil)
 
@@ -1444,32 +1440,29 @@ elif page == "Programación de aula":
                     ss.pop("prog_out", None)
                     ss.pop("pa_docx", None)
 
-            # Campos de la programación de aula para esta SA: se empareja la
-            # columna de P_Aula_SA por título; si no, por posición.
+            # Campos de la programación de aula para esta SA. Se emparejan por
+            # título; una SA nueva sin columna se edita igual (la columna se crea
+            # al guardar). Las ediciones se guardan por título de SA.
             import re as _re
 
             _dsa_sel = next((d for n, d in _sa_opts if n == sa_sel), "")
             _norm = lambda s: _re.sub(r"\s+", " ", str(s or "")).strip().lower()
-            _col = None
             _base = {}
             for _e in ss.pa_sa_cols:
                 if _norm(_e.get("valores", {}).get("titulo")) == _norm(_dsa_sel):
-                    _col, _base = _e["col"], _e["valores"]
+                    _base = _e["valores"]
                     break
-            if _col is None and 1 <= sa_sel <= len(ss.pa_sa_cols):
-                _e = ss.pa_sa_cols[sa_sel - 1]
-                _col, _base = _e["col"], _e["valores"]
-            if _col:
-                st.markdown("**Campos de la programación de aula para esta SA**")
-                _cur = ss.pa_sa_edits.get(_col, dict(_base))
-                for campo in ss.pa_sa_campos:
-                    _cur[campo] = st.text_area(
-                        _hum(campo), value=_cur.get(campo, ""),
-                        key=f"pasa_{_col}_{campo}", height=70,
-                    )
-                ss.pa_sa_edits[_col] = _cur
-            else:
-                st.caption("Esta SA no tiene columna en la tabla P_Aula_SA del Excel.")
+            _nueva = not _base
+            st.markdown("**Campos de la programación de aula para esta SA**")
+            if _nueva:
+                st.caption("Situación nueva: su columna en P_Aula_SA se creará al guardar.")
+            _cur = ss.pa_sa_edits.get(_dsa_sel, dict(_base))
+            for campo in ss.pa_sa_campos:
+                _cur[campo] = st.text_area(
+                    _hum(campo), value=_cur.get(campo, ""),
+                    key=f"pasa_{sa_sel}_{campo}", height=70,
+                )
+            ss.pa_sa_edits[_dsa_sel] = _cur
 
         # ── BLOQUE: Resumen de actividades por SA (tabla dinámica de INFORMES)
         st.markdown(
