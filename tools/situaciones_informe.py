@@ -215,6 +215,45 @@ def build_table_copy_html(shares: list[dict]) -> str:
     )
 
 
+def render_word_table_html(headers: list[str], rows: list[list], aligns: list[str] | None = None) -> str:
+    """Tabla HTML genérica lista para pegar en Word (estilos en línea)."""
+    th = (
+        'style="border:1px solid #666;padding:4px 8px;background:#000;color:#fff;'
+        'text-align:left;font-family:Calibri,Arial,sans-serif;vertical-align:top;"'
+    )
+    aligns = aligns or ["left"] * len(headers)
+
+    def _td(a):
+        return (
+            f'style="border:1px solid #666;padding:4px 8px;font-family:Calibri,Arial,sans-serif;'
+            f'text-align:{a};vertical-align:top;"'
+        )
+
+    body = []
+    for row in rows:
+        cells = "".join(
+            f"<td {_td(aligns[i] if i < len(aligns) else 'left')}>"
+            f"{'' if v is None else html_lib.escape(str(v))}</td>"
+            for i, v in enumerate(row)
+        )
+        body.append(f"<tr>{cells}</tr>")
+    head = "".join(f"<th {th}>{html_lib.escape(h)}</th>" for h in headers)
+    return (
+        '<table style="border-collapse:collapse;">'
+        f"<thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>"
+    )
+
+
+def build_html_table_copy_html(table_html: str, *, btn_id: str, fn: str, label: str) -> str:
+    body = _TABLE_BODY.replace("__TABLE_JSON__", json.dumps(table_html))
+    return (
+        _MINI_BUTTON.replace("__BTN_ID__", btn_id)
+        .replace("__FN__", fn)
+        .replace("__LABEL__", label)
+        .replace("__BODY__", body)
+    )
+
+
 def build_image_copy_html(png_bytes: bytes) -> str:
     body = _IMG_BODY.replace("__IMG_B64__", base64.b64encode(png_bytes).decode("ascii"))
     return (

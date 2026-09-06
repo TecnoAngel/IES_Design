@@ -160,6 +160,7 @@ if prog_excel is not None and st.session_state.get("prog_loaded_name") != prog_e
         st.session_state.il_rows = il_recompute(_il["rows"], _il["ce_ced"], _il["ce_list"])
         st.session_state.il_ce_list = _il["ce_list"]
         st.session_state.il_ce_ced = _il["ce_ced"]
+        st.session_state.il_ce_p = _il["ce_p"]
         st.session_state.il_aux = _il["aux"]
         st.session_state.prog_loaded_name = prog_excel.name
         st.session_state.pop("prog_out", None)
@@ -340,6 +341,7 @@ elif page == "Diseño de la programación":
 
         ce_list = st.session_state.il_ce_list
         ce_ced = st.session_state.il_ce_ced
+        ce_p = st.session_state.get("il_ce_p", {})
         aux = st.session_state.il_aux
         sa_options = sorted({s.sa for s in sits if s.sa})
 
@@ -540,6 +542,44 @@ elif page == "Diseño de la programación":
                     )
             if il_errores:
                 st.warning("Indicadores — avisos:\n\n- " + "\n- ".join(il_errores))
+
+            # Resumen por criterio (como la hoja RESUMEN) + copiar para Word.
+            from tools.indicadores_logro import resumen_por_ce
+            from tools.situaciones_informe import (
+                build_html_table_copy_html,
+                render_word_table_html,
+            )
+
+            _res = resumen_por_ce(
+                il_recompute(pending, ce_ced, ce_list), ce_list, ce_ced, ce_p
+            )
+            _res_headers = ["CE", "Criterio de evaluación", "% CE", "IL", "Contenidos", "CT", "SA"]
+            _res_rows = [
+                [
+                    r["CE"], r["CED"],
+                    f"{r['pct'] * 100:.2f}".replace(".", ",") + " %",
+                    r["IL"], r["CONTENIDOS"], r["CT"], r["SA"],
+                ]
+                for r in _res
+            ]
+            _res_table = render_word_table_html(
+                _res_headers, _res_rows,
+                aligns=["center", "left", "center", "left", "left", "center", "center"],
+            )
+            st.markdown('<div class="mini-label">Resumen por criterio</div>', unsafe_allow_html=True)
+            components.html(
+                build_html_table_copy_html(
+                    _res_table, btn_id="il-copy-res", fn="ilCopyRes",
+                    label="Copiar resumen (Word)",
+                ),
+                height=40,
+            )
+            with st.expander("Ver resumen por criterio", expanded=False):
+                st.dataframe(
+                    pd.DataFrame(_res_rows, columns=_res_headers),
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
         # ───────────────── DESCARGA GLOBAL (barra de arriba) ─────────────────
         with dl_box:

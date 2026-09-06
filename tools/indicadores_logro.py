@@ -123,8 +123,9 @@ def read_indicadores(source: Any) -> dict:
             }
         )
 
-    # CE -> CED desde TablaCriteriosEvaluacion
+    # CE -> CED y peso P desde TablaCriteriosEvaluacion
     ce_ced: dict[str, str] = {}
+    ce_p: dict[str, float] = {}
     ce_list: list[str] = []
     ws_ce = _find_sheet(wb, CRITERIOS_SHEET_PREFIX, prefix=True)
     if ws_ce is not None:
@@ -140,6 +141,7 @@ def read_indicadores(source: Any) -> dict:
             if not ce:
                 continue
             ce_ced[ce] = _s(r[1]) if len(r) > 1 else ""
+            ce_p[ce] = _num(r[2]) or 0.0 if len(r) > 2 else 0.0
             ce_list.append(ce)
 
     # Listas auxiliares
@@ -154,7 +156,76 @@ def read_indicadores(source: Any) -> dict:
                     vals.append(str(v).strip())
             aux[key] = vals
 
-    return {"rows": rows, "ce_list": ce_list, "ce_ced": ce_ced, "aux": aux}
+    return {
+        "rows": rows,
+        "ce_list": ce_list,
+        "ce_ced": ce_ced,
+        "ce_p": ce_p,
+        "aux": aux,
+    }
+
+
+def _split_tokens(value: Any) -> list[str]:
+    """Divide "A.1.1, A 1 2 ,B.3.1" en ['A.1.1', 'A.1.2', 'B.3.1'] (espacios
+    internos -> puntos, como hace la hoja RESUMEN con SUBSTITUTE)."""
+    out = []
+    for tok in str(value or "").split(","):
+        tok = re.sub(r"\s+", ".", tok.strip()).strip(".")
+        if tok:
+            out.append(tok)
+    return out
+
+
+def resumen_por_ce(
+    rows: list[dict],
+    ce_list: list[str],
+    ce_ced: dict[str, str],
+    ce_p: dict[str, float] | None = None,
+) -> list[dict]:
+    """Resumen por criterio de evaluación, equivalente a la hoja RESUMEN:
+    por cada CE, su %CE (P/ΣP), y la lista única de contenidos (CON), CT y SA
+    de todos sus indicadores de logro."""
+    ce_p = ce_p or {}
+    total_p = sum(ce_p.values())
+
+    por_ce: dict[str, dict] = {}
+    orden: list[str] = []
+    for r in rows:
+        ce = _s(r.get("CE"))
+        if not ce:
+            continue
+        if ce not in por_ce:
+            por_ce[ce] = {"CON": [], "CT": [], "SA": [], "IL": []}
+            orden.append(ce)
+        d = por_ce[ce]
+        d["CON"] += _split_tokens(r.get("CON"))
+        d["CT"] += _split_tokens(r.get("CT"))
+        if r.get("SA") not in (None, ""):
+            d["SA"].append(str(int(r["SA"])) if isinstance(r["SA"], (int, float)) else str(r["SA"]))
+        if _s(r.get("IL")):
+            d["IL"].append(_s(r["IL"]))
+
+    secuencia = [c for c in ce_list if c in por_ce] + [c for c in orden if c not in ce_list]
+
+    def _uniq(seq):
+        return list(dict.fromkeys(seq))
+
+    out = []
+    for ce in secuencia:
+        d = por_ce[ce]
+        p = ce_p.get(ce, 0.0)
+        out.append(
+            {
+                "CE": ce,
+                "CED": ce_ced.get(ce, ""),
+                "pct": (p / total_p) if total_p else 0.0,
+                "IL": ", ".join(_uniq(d["IL"])),
+                "CONTENIDOS": ", ".join(_uniq(d["CON"])),
+                "CT": ", ".join(_uniq(d["CT"])),
+                "SA": ", ".join(_uniq(d["SA"])),
+            }
+        )
+    return out
 
 
 def recompute(
