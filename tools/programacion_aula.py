@@ -335,8 +335,14 @@ def build_tabla_indicadores(tpl: DocxTemplate, indicadores: list[dict]):
     )
 
 
+def _norm_titulo(value: Any) -> str:
+    import re as _re
+
+    return _re.sub(r"\s+", " ", str(value or "")).strip().lower()
+
+
 def build_tabla_actividades(tpl: DocxTemplate, actividades: list[dict]):
-    headers = ["Actividad", "Descripción", "% sobre la programación", "% sobre la situación"]
+    headers = ["A", "Descripción", "Valor s/ programación", "Valor s/ SA"]
     rows = [
         [a.get("A"), a.get("DA"), _fmt_pct(a.get("valor_programacion", 0.0)), _fmt_pct(a.get("valor_sa", 0.0))]
         for a in actividades
@@ -349,8 +355,39 @@ def build_tabla_actividades(tpl: DocxTemplate, actividades: list[dict]):
     )
 
 
-def run_programacion_aula(excel_source: Any, template_source: Any = None) -> bytes:
-    """Genera el .docx de la programación de aula a partir del Excel de datos."""
+def _sa_num_por_titulo(payload: bytes) -> dict[str, int]:
+    """Mapa {título normalizado -> nº real de SA} a partir de la tabla
+    ``SituacionesAprendizaje`` (la que manda). Las columnas de ``P_Aula_SA`` no
+    tienen por qué venir en orden de SA, así que la posición de columna no sirve
+    para emparejar indicadores/actividades (que van por nº real de SA)."""
+    try:
+        from tools.situaciones_aprendizaje import read_situaciones as _read_tabla_sa
+
+        datos = _read_tabla_sa(BytesIO(payload))
+    except Exception:
+        return {}
+    return {
+        _norm_titulo(s.dsa): s.sa
+        for s in datos.situaciones
+        if s.sa not in (None, "") and _norm_titulo(s.dsa)
+    }
+
+
+def run_programacion_aula(
+    excel_source: Any,
+    template_source: Any = None,
+    *,
+    resumen_por_sa: dict | None = None,
+) -> bytes:
+    """Genera el .docx de la programación de aula a partir del Excel de datos.
+
+    ``resumen_por_sa`` (opcional): ``{titulo_de_SA: {"indicadores": [...],
+    "actividades": [...]}}`` ya calculado por la app (misma cuenta que el
+    "Resumen de actividades" de cada SA en pantalla). Cuando se pasa, las tablas
+    ``{{p situacion.tabla_indicadores}}`` / ``{{p situacion.tabla_actividades}}``
+    se rellenan desde ahí en vez de recalcular sobre un Excel que puede traer las
+    fórmulas sin cachear.
+    """
     payload = _read_source_bytes(excel_source)
     template_bytes = ensure_template(template_source)
 
@@ -364,13 +401,23 @@ def run_programacion_aula(excel_source: Any, template_source: Any = None) -> byt
 
     tpl = DocxTemplate(BytesIO(template_bytes))
 
+    resumen = {_norm_titulo(k): v for k, v in (resumen_por_sa or {}).items()}
+    num_por_titulo = _sa_num_por_titulo(payload)
     indicadores_por_sa = read_indicadores_por_sa(payload)
     actividades_por_sa = compute_valores_actividades_por_sa(payload)
 
     for situacion in situaciones:
-        numero = situacion["numero"]
-        situacion["tabla_indicadores"] = build_tabla_indicadores(tpl, indicadores_por_sa.get(numero, []))
-        situacion["tabla_actividades"] = build_tabla_actividades(tpl, actividades_por_sa.get(numero, []))
+        clave = _norm_titulo(situacion.get("titulo"))
+        entrada = resumen.get(clave)
+        if entrada is not None:
+            indicadores = entrada.get("indicadores", [])
+            actividades = entrada.get("actividades", [])
+        else:
+            numero = num_por_titulo.get(clave, situacion["numero"])
+            indicadores = indicadores_por_sa.get(numero, [])
+            actividades = actividades_por_sa.get(numero, [])
+        situacion["tabla_indicadores"] = build_tabla_indicadores(tpl, indicadores)
+        situacion["tabla_actividades"] = build_tabla_actividades(tpl, actividades)
 
     ctx["situaciones"] = situaciones
 

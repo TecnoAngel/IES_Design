@@ -339,6 +339,48 @@ def _guardar_todo() -> bytes:
     return data
 
 
+def _resumen_por_sa_docx():
+    """Para el .docx: por cada SA (por título), sus indicadores y el resumen de
+    actividades (valor s/ programación y s/ SA) tal cual se ven en pantalla."""
+    from tools.programacion_aula_editor import valores_actividades
+
+    ss = st.session_state
+    il_state = il_recompute(
+        ss.get("il_pending", ss.get("il_rows", [])), ss.il_ce_ced, ss.il_ce_list
+    )
+    ce_p = {r["CE"]: r["P"] for r in ss.get("ce_rows", [])} or dict(ss.get("il_ce_p", {}))
+    val = valores_actividades(ss.get("pa_acts", []), il_state, ce_p)
+
+    out = {}
+    for n, dsa, _t in _sa_datos():
+        out[dsa] = {
+            "indicadores": [
+                {c: r.get(c) for c in ("CE", "IL", "CT", "IE", "CC", "AE")}
+                for r in il_state if r.get("SA") == n
+            ],
+            "actividades": [
+                {
+                    "A": a["A"], "DA": a["DA"],
+                    "valor_programacion": a["valor_prog"], "valor_sa": a["valor_sa"],
+                }
+                for a in val if a.get("SA") == n
+            ],
+        }
+    return out
+
+
+def _generar_docx(data_bytes) -> bytes:
+    from io import BytesIO as _BD
+
+    from tools.programacion_aula import run_programacion_aula
+
+    return run_programacion_aula(
+        _BD(data_bytes),
+        st.session_state.get("pa_tpl"),
+        resumen_por_sa=_resumen_por_sa_docx(),
+    )
+
+
 def _aplicar_regeneracion(issues):
     """Aplica en sesión los arreglos automáticos de los desajustes fixables:
     1 IL en blanco por CE sin indicador, quita actividades huérfanas y regenera
@@ -413,10 +455,7 @@ def _dlg_coherencia(issues, contexto="carga"):
                 _data = _guardar_todo()
                 ss.prog_out = _data
                 if contexto == "generar":
-                    from io import BytesIO as _B3
-
-                    from tools.programacion_aula import run_programacion_aula
-                    ss.pa_docx = run_programacion_aula(_B3(_data), ss.get("pa_tpl"))
+                    ss.pa_docx = _generar_docx(_data)
         except Exception as exc:
             ss.prog_msg = f"Error al regenerar: {exc}"
         st.rerun()
@@ -1318,7 +1357,6 @@ elif page == "Programación de aula":
         from io import BytesIO
 
         from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
-        from tools.programacion_aula import run_programacion_aula
         from tools.programacion_aula_editor import recompute_actividades, valores_actividades
         from tools.programacion_aula_editor import read_prog_aula
         from tools.situaciones_informe import (
@@ -1373,7 +1411,7 @@ elif page == "Programación de aula":
             else:
                 try:
                     _upd = _guardar_todo()
-                    ss.pa_docx = run_programacion_aula(BytesIO(_upd), _tpl)
+                    ss.pa_docx = _generar_docx(_upd)
                     ss.pa_gen_msg = ""
                 except Exception as exc:
                     ss.pa_gen_msg = f"No se ha podido generar: {exc}"
