@@ -216,14 +216,18 @@ def regenerar_p_aula_sa(
     source: Any,
     sa_titulos: list[str],
     edits: dict[str, dict[str, str]] | None = None,
+    sa_trimestres: list[str] | None = None,
 ) -> bytes:
     """Reconstruye Tabla9 con una columna por SA (en orden), con su título.
 
-    Para cada columna se usan, por prioridad: los valores de ``edits`` (dict
-    ``{titulo_normalizado: {campo: valor}}``), o el contenido de la columna que
-    ya tenía ese título en el Excel; las SA nuevas van en blanco.
+    ``titulo`` y ``trimestre`` se rellenan SIEMPRE desde la tabla de situaciones
+    (``sa_titulos`` y ``sa_trimestres``), pisando lo que hubiera. El resto de
+    campos: valores de ``edits`` (dict ``{titulo_normalizado: {campo: valor}}``)
+    o el contenido de la columna que ya tenía ese título; las SA nuevas van en
+    blanco.
     """
     edits = {_norm(k): v for k, v in (edits or {}).items()}
+    sa_trimestres = sa_trimestres or ["" for _ in sa_titulos]
     payload = _read_bytes(source)
     src = zipfile.ZipFile(BytesIO(payload))
     sp = _find_sheet_path(src, SA_SHEET)
@@ -264,7 +268,9 @@ def regenerar_p_aula_sa(
             src_vals = edits.get(key) or old_by_titulo.get(key, {})
             val = src_vals.get(campo, "")
             if campo == "titulo":
-                val = sa_titulos[j] or val
+                val = sa_titulos[j]
+            elif campo == "trimestre":
+                val = sa_trimestres[j] if j < len(sa_trimestres) and sa_trimestres[j] else val
             cells.append(_txt(f"{col}{r}", val))
         rows_xml.append(f'<row r="{r}" spans="1:{1 + n}">{"".join(cells)}</row>')
 

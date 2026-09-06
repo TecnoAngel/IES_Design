@@ -197,19 +197,36 @@ with st.container(border=True):
             st.caption(f"Versión cargada: {st.session_state.prog_sello_cargado}")
     dl_box = ubar2.container()
 
-def _sa_pares():
-    """(nº, descripción) de cada SA, ordenados por nº. Del estado editado si lo
-    hay, si no del Excel cargado."""
+def _trimestre_txt(ev):
+    try:
+        n = int(ev)
+    except (TypeError, ValueError):
+        return ""
+    return f"{n}º trimestre" if n in (1, 2, 3) else ""
+
+
+def _sa_datos():
+    """(nº, descripción, trimestre) de cada SA, ordenados por nº. Del estado
+    editado si lo hay, si no del Excel cargado."""
     ss = st.session_state
     rows = ss.get("sa_grid_rows")
     if not rows and "sa_df" in ss:
         rows = [
-            {"SA": None if pd.isna(v[0]) else int(v[0]), "DSA": str(v[2] or "")}
+            {
+                "SA": None if pd.isna(v[0]) else int(v[0]),
+                "EV": None if pd.isna(v[1]) else v[1],
+                "DSA": str(v[2] or ""),
+            }
             for v in ss.sa_df.itertuples(index=False)
         ]
     return sorted(
-        (r["SA"], r["DSA"]) for r in (rows or []) if r.get("SA") is not None
+        (r["SA"], r["DSA"], _trimestre_txt(r.get("EV")))
+        for r in (rows or []) if r.get("SA") is not None
     )
+
+
+def _sa_pares():
+    return [(n, d) for n, d, _t in _sa_datos()]
 
 
 def _estado_coherencia():
@@ -303,11 +320,15 @@ def _guardar_todo() -> bytes:
         from tools.programacion_aula_editor import save_actividades, save_datos_generales
 
         data = save_datos_generales(_B(data), dict(ss.pa_datos))
-        # P_Aula_SA se reconstruye siempre desde la lista de SA actual: así las
-        # SA nuevas obtienen su columna automáticamente. Se aplican las ediciones
-        # de sesión (por título) y se conserva lo demás por título.
+        # P_Aula_SA se reconstruye siempre desde la lista de SA actual: las SA
+        # nuevas obtienen columna, y titulo/trimestre se pisan con lo de la tabla
+        # de situaciones. El resto: ediciones de sesión (por título) o lo previo.
+        _sad = _sa_datos()
         data = regenerar_p_aula_sa(
-            _B(data), [t for _, t in _sa_pares()], edits=ss.get("pa_sa_edits", {})
+            _B(data),
+            [d for _, d, _t in _sad],
+            edits=ss.get("pa_sa_edits", {}),
+            sa_trimestres=[t for _, _d, t in _sad],
         )
         _pil = {r["IL"]: float(r["PIL"] or 0) for r in il_g}
         data = save_actividades(_B(data), ss.get("pa_acts", []), _pil)
@@ -338,7 +359,10 @@ def _aplicar_regeneracion(issues):
         ss.pa_acts = quitar_actividades_huerfanas(ss.get("pa_acts", []), ss.il_rows)
     if any(it["clave"] == "pasa_desajuste" for it in issues):
         _base = ss.get("prog_base") or prog_excel.getvalue()
-        _reg = regenerar_p_aula_sa(_B2(_base), [t for _, t in _sa_pares()])
+        _sad = _sa_datos()
+        _reg = regenerar_p_aula_sa(
+            _B2(_base), [d for _, d, _t in _sad], sa_trimestres=[t for _, _d, t in _sad]
+        )
         ss.prog_base = _reg
         ss.pa_sa_cols = read_prog_aula(_B2(_reg))["sa_cols"]
         ss.pa_sa_edits = {}
@@ -1512,11 +1536,21 @@ elif page == "Programación de aula":
                     _base = _e["valores"]
                     break
             _nueva = not _base
+            _tri_sel = next((t for n, _d, t in _sa_datos() if n == sa_sel), "")
             st.markdown("**Campos de la programación de aula para esta SA**")
             if _nueva:
                 st.caption("Situación nueva: su columna en P_Aula_SA se creará al guardar.")
             _cur = ss.pa_sa_edits.get(_dsa_sel, dict(_base))
+            # titulo y trimestre son automáticos (de la tabla de situaciones)
+            _cur["titulo"] = _dsa_sel
+            _cur["trimestre"] = _tri_sel
+            _cc = st.columns(2)
+            _cc[0].text_input("Título", value=_dsa_sel, disabled=True, key=f"pasa_tit_{sa_sel}")
+            _cc[1].text_input("Trimestre", value=_tri_sel or "—", disabled=True, key=f"pasa_tri_{sa_sel}")
+            st.caption("Título y trimestre se toman de la tabla de situaciones de aprendizaje.")
             for campo in ss.pa_sa_campos:
+                if campo in ("titulo", "trimestre"):
+                    continue
                 _cur[campo] = st.text_area(
                     _hum(campo), value=_cur.get(campo, ""),
                     key=f"pasa_{sa_sel}_{campo}", height=70,
