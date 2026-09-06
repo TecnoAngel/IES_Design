@@ -138,6 +138,61 @@ st.markdown(
         border-radius: 12px !important;
         box-shadow: 0 2px 10px rgba(166,24,46,0.08);
     }
+    /* Secciones colapsables de una pestaña (Situaciones, Criterios, …). */
+    [class*="st-key-secc_"] { margin-top: 1.3rem; }
+    [class*="st-key-secc_"] [data-testid="stExpander"] {
+        border: 1px solid var(--jcyl-line) !important;
+        border-left: 6px solid var(--jcyl-red) !important;
+        border-radius: 12px !important;
+        box-shadow: 0 2px 10px rgba(166,24,46,0.10);
+    }
+    [class*="st-key-secc_"] [data-testid="stExpander"] summary {
+        padding: 0.55rem 1rem !important;
+        font-size: 1.5rem !important;
+        font-weight: 750 !important;
+    }
+    [class*="st-key-secc_"] [data-testid="stExpander"] summary * {
+        font-size: 1.5rem !important;
+        font-weight: 750 !important;
+        letter-spacing: 0.01em;
+    }
+    [class*="st-key-secc_"] [data-testid="stExpander"] summary:hover {
+        color: var(--jcyl-red) !important;
+    }
+    [class*="st-key-secc_a_"] [data-testid="stExpander"] { background: #fdfaf4; }
+    [class*="st-key-secc_a_"] [data-testid="stExpander"] summary { background: #f7efe1; }
+    [class*="st-key-secc_b_"] [data-testid="stExpander"] { background: #ffffff; }
+    /* Cabecera-botón de las secciones autónomas (_seccion_simple). */
+    [class*="st-key-sechdr_"] { margin-top: 1.3rem; }
+    [class*="st-key-sechdr_"] button {
+        justify-content: flex-start !important;
+        text-align: left !important;
+        padding: 0.55rem 1rem !important;
+        background: #f7efe1 !important;
+        border: 1px solid var(--jcyl-line) !important;
+        border-left: 6px solid var(--jcyl-red) !important;
+        border-radius: 12px !important;
+        box-shadow: 0 2px 10px rgba(166,24,46,0.10) !important;
+        color: var(--jcyl-ink) !important;
+    }
+    [class*="st-key-sechdr_"] button > div,
+    [class*="st-key-sechdr_"] button [data-testid="stMarkdownContainer"] {
+        justify-content: flex-start !important;
+        align-items: flex-start !important;
+        width: 100% !important;
+        text-align: left !important;
+    }
+    [class*="st-key-sechdr_"] button p {
+        font-size: 1.5rem !important;
+        font-weight: 750 !important;
+        letter-spacing: 0.01em;
+        text-align: left !important;
+        width: 100% !important;
+    }
+    [class*="st-key-sechdr_"] button:hover {
+        border-left-color: var(--jcyl-gold) !important;
+        color: var(--jcyl-red) !important;
+    }
     .mini-label {
         font-size: 0.8rem;
         font-weight: 600;
@@ -160,6 +215,35 @@ st.markdown(
 )
 
 st.markdown("")
+
+# streamlit-aggrid se renderiza en un <iframe>: dentro de un st.expander puede
+# montarse con ancho 0 y quedarse "en una columna". Este parche fuerza el ancho
+# de esos iframes al 100 % y lanza un 'resize' para que AG-Grid recoloque las
+# columnas, al abrir/cerrar cualquier sección y durante los primeros segundos.
+components.html(
+    """
+    <script>
+    (function () {
+      const doc = window.parent.document;
+      function nudge() {
+        doc.querySelectorAll('iframe').forEach(f => {
+          if (f.closest('[data-testid="stExpander"]')) {
+            f.style.width = '100%';
+            try { f.contentWindow.dispatchEvent(new Event('resize')); } catch (e) {}
+          }
+        });
+        window.parent.dispatchEvent(new Event('resize'));
+      }
+      doc.addEventListener('click', e => {
+        if (e.target.closest('summary')) { [60, 250, 600].forEach(t => setTimeout(nudge, t)); }
+      }, true);
+      let n = 0;
+      const iv = setInterval(() => { nudge(); if (++n > 20) clearInterval(iv); }, 350);
+    })();
+    </script>
+    """,
+    height=0,
+)
 
 # st.tabs no conserva la pestaña activa entre reruns (cada clic en un botón
 # devuelve la vista a la primera pestaña), así que la navegación se hace con
@@ -381,6 +465,308 @@ def _generar_docx(data_bytes) -> bytes:
     )
 
 
+def _seccion(titulo, idx, *, abierto=False):
+    """Sección colapsable de una pestaña (`st.expander`). El cuerpo se ejecuta
+    siempre (aunque esté plegada) para no romper el flujo de datos entre
+    secciones. `idx` fija el tono alterno vía CSS (`.st-key-secc_<par>_<idx>`)."""
+    par = "a" if idx % 2 == 0 else "b"
+    return st.expander(titulo, expanded=abierto, key=f"secc_{par}_{idx}")
+
+
+def _seccion_simple(titulo, idx, *, abierto=True):
+    """Sección colapsable para bloques autónomos (no exportan variables a otros
+    bloques). Cabecera-botón grande y, si está plegada, el cuerpo NO se ejecuta
+    → una tabla AgGrid solo se monta con ancho real. Devuelve el estado abierto."""
+    ss = st.session_state
+    k = f"secs_{idx}"
+    ss.setdefault(k, abierto)
+    with st.container(key=f"sechdr_{idx}"):
+        if st.button(f"{'▾' if ss[k] else '▸'}  {titulo}", key=f"secs_btn_{idx}",
+                     use_container_width=True):
+            ss[k] = not ss[k]
+            st.rerun()
+    return ss[k]
+
+
+def _calc_sesiones_por_evaluacion():
+    """Menú colapsable (dentro de Situaciones de aprendizaje): con el calendario
+    escolar oficial de Castilla y León y las sesiones de la materia por día de la
+    semana, cuenta día a día los días lectivos y las sesiones de cada evaluación.
+    El resultado puede volcarse a las «horas previstas» de cada trimestre."""
+    from datetime import date as _date  # noqa: F401  (por si se usa en el futuro)
+
+    ss = st.session_state
+    ss.setdefault("sa_previstas", {})
+
+    with _seccion("Calcular sesiones por evaluación (calendario oficial)", 1):
+        from tools.sesiones_calendario import (
+            DEFAULT_CALENDAR_URL,
+            DIAS_SEMANA,
+            contar_evaluacion,
+            default_trimester_ranges,
+            fetch_school_calendar,
+        )
+
+        st.caption(
+            "Cuenta día a día los días lectivos de cada evaluación según el calendario "
+            "escolar de Castilla y León y, con las sesiones que tengas cada día de la "
+            "semana, las sesiones totales de tu materia. El resultado se puede volcar a "
+            "«horas previstas»."
+        )
+
+        u1, u2 = st.columns([3, 1])
+        url = u1.text_input("URL del calendario (JCyL)", value=DEFAULT_CALENDAR_URL, key="ses_url")
+        if u2.button("Cargar calendario", use_container_width=True, key="ses_load"):
+            for k in [k for k in list(ss.keys()) if k.startswith(("ses_tr", "ses_hol")) or k == "ses_loc"]:
+                ss.pop(k, None)
+            try:
+                ss.ses_cal = fetch_school_calendar(url)
+                st.success("Calendario cargado.")
+            except Exception as exc:
+                ss.pop("ses_cal", None)
+                st.error(f"No se ha podido leer el calendario: {exc}")
+
+        cal = ss.get("ses_cal")
+        if cal is None:
+            st.info("Carga el calendario oficial para calcular.")
+            return
+
+        st.markdown(
+            f"**Curso ESO:** {cal.course_start:%d/%m/%Y} – {cal.course_end:%d/%m/%Y}  \n"
+            f"**Navidad:** {min(cal.christmas_days):%d/%m/%Y} – {max(cal.christmas_days):%d/%m/%Y} · "
+            f"**Semana Santa:** {min(cal.easter_days):%d/%m/%Y} – {max(cal.easter_days):%d/%m/%Y}"
+        )
+
+        st.markdown(
+            '<div class="mini-label">Sesiones de la materia por día de la semana '
+            "(normalmente 0, 1 o 2)</div>",
+            unsafe_allow_html=True,
+        )
+        dcols = st.columns(5)
+        ses_dia = {
+            i: dc.number_input(
+                nom, min_value=0, max_value=6, step=1,
+                value=int(ss.get(f"ses_d{i}", 0)), key=f"ses_d{i}",
+            )
+            for i, (dc, nom) in enumerate(zip(dcols, DIAS_SEMANA))
+        }
+
+        deftr = default_trimester_ranges(cal)
+        st.markdown(
+            '<div class="mini-label">Fechas de cada evaluación (se proponen en torno a '
+            "Navidad y Semana Santa; ajústalas si hace falta)</div>",
+            unsafe_allow_html=True,
+        )
+        trcols = st.columns(3)
+        rangos = []
+        for i, (tc, lbl) in enumerate(zip(trcols, ("1ª evaluación", "2ª evaluación", "3ª evaluación"))):
+            with tc:
+                st.markdown(f"**{lbl}**")
+                a = st.date_input(
+                    "Inicio", value=ss.get(f"ses_tr{i}a", deftr[i][0]),
+                    min_value=cal.course_start, max_value=cal.course_end,
+                    key=f"ses_tr{i}a", format="DD/MM/YYYY",
+                )
+                b = st.date_input(
+                    "Fin", value=ss.get(f"ses_tr{i}b", deftr[i][1]),
+                    min_value=cal.course_start, max_value=cal.course_end,
+                    key=f"ses_tr{i}b", format="DD/MM/YYYY",
+                )
+                rangos.append((a, b))
+
+        extra = set()
+        if cal.other_holidays:
+            st.markdown(
+                '<div class="mini-label">Festivos y días no lectivos a descontar</div>',
+                unsafe_allow_html=True,
+            )
+            for i, g in enumerate(cal.other_holidays):
+                rng = (
+                    f"{g.start:%d/%m/%Y}" if g.start == g.end
+                    else f"{g.start:%d/%m/%Y} – {g.end:%d/%m/%Y}"
+                )
+                if st.checkbox(f"{g.name}  ({rng})", value=ss.get(f"ses_hol{i}", True), key=f"ses_hol{i}"):
+                    extra |= g.days
+
+        loc = None
+        if st.checkbox("Añadir fiesta local", value=ss.get("ses_loc_on", False), key="ses_loc_on"):
+            loc = st.date_input(
+                "Fecha de la fiesta local", value=ss.get("ses_loc", cal.course_start),
+                min_value=cal.course_start, max_value=cal.course_end,
+                key="ses_loc", format="DD/MM/YYYY",
+            )
+
+        margen = st.slider(
+            "Margen de seguridad (% de sesiones que se prevé perder: excursiones, "
+            "actividades, imprevistos…)",
+            min_value=0, max_value=50, value=int(ss.get("ses_margen", 10)), step=1,
+            key="ses_margen",
+        )
+        factor = margen / 100
+
+        no_lectivos = cal.holiday_days | extra | ({loc} if loc else set())
+        resultados = [contar_evaluacion(a, b, ses_dia, no_lectivos, factor) for a, b in rangos]
+
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "Evaluación": lbl,
+                        "Días lectivos": c.dias_lectivos,
+                        "Días con clase": c.dias_con_clase,
+                        "Sesiones": c.sesiones,
+                        f"Sesiones −{margen}%": c.sesiones_ajustadas,
+                        "Festivos restados": c.festivos_restados,
+                    }
+                    for lbl, c in zip(("1ª", "2ª", "3ª"), resultados)
+                ]
+            ),
+            hide_index=True, use_container_width=True,
+        )
+        st.caption(
+            f"Total curso: **{sum(c.sesiones for c in resultados)} sesiones** "
+            f"({sum(c.sesiones_ajustadas for c in resultados)} con el margen) · "
+            f"{sum(c.dias_lectivos for c in resultados)} días lectivos"
+        )
+
+        ss._ses_prev = {
+            tri: float(c.sesiones_ajustadas) for tri, c in zip(TRIMESTRES, resultados)
+        }
+
+        def _volcar():
+            for tri, val in st.session_state.get("_ses_prev", {}).items():
+                st.session_state[f"sa_prev_{tri}"] = val
+                st.session_state.sa_previstas[tri] = val
+            st.session_state.pop("prog_out", None)
+
+        st.button(
+            f"Usar estas sesiones (con el margen del {margen}%) como horas previstas "
+            "de cada trimestre",
+            key="ses_apply", type="primary", on_click=_volcar,
+        )
+
+
+def _ipf_cargar(p_por_ce, pil_por_il, ce_ced, ce_list):
+    """Vuelca a las tablas en sesión los pesos sugeridos por el IPF y remonta las
+    rejillas afectadas (mismo patrón que el botón «Actualizar»)."""
+    ss = st.session_state
+    if p_por_ce is not None:
+        cur = {r["CE"]: r["P"] for r in ss.get("ce_rows", [])}
+        pairs = [(ce, float(p_por_ce.get(ce, cur.get(ce, 0.0)))) for ce in ce_list]
+        total = sum(v for _, v in pairs)
+        ss.ce_rows = [
+            {"CE": ce, "CED": ce_ced.get(ce, ""), "P": p,
+             "PCT": (p / total if (p and total) else 0.0)}
+            for ce, p in pairs
+        ]
+        ss.il_ce_p = {ce: p for ce, p in pairs}
+        ss.ce_nonce = ss.get("ce_nonce", 0) + 1
+    if pil_por_il is not None:
+        nuevas = []
+        for r in ss.get("il_rows", []):
+            r2 = dict(r)
+            if r.get("IL") in pil_por_il:
+                r2["PIL"] = pil_por_il[r["IL"]]
+            nuevas.append(r2)
+        ss.il_rows = il_recompute(nuevas, ce_ced, ce_list)
+        ss.il_pending = list(ss.il_rows)
+        ss.il_nonce = ss.get("il_nonce", 0) + 1
+    ss.pop("prog_out", None)
+    _que = "P y PIL" if (p_por_ce is not None and pil_por_il is not None) else (
+        "P de los criterios" if p_por_ce is not None else "PIL de los indicadores")
+    ss.ipf_msg = f"Cargados los pesos sugeridos ({_que}). Las tablas y gráficos se han actualizado."
+    st.rerun()
+
+
+def _ajuste_pesos_ipf(il_rows, ce_list, ce_ced, ce_p, sits):
+    """Herramienta colapsable (entre Indicadores de logro y la matriz CE×SA):
+    fija el % objetivo de cada instrumento de evaluación y, con el reparto de
+    horas como restricción, itera (IPF) hasta aproximar los pesos P de los
+    criterios y los PIL de los indicadores. No toca las tablas: el profesor
+    decide si carga la propuesta."""
+    from tools.ajuste_pesos import (
+        instrumentos_presentes,
+        reparto_horario,
+        reparto_ie_actual,
+        sugerir_pesos,
+    )
+
+    ss = st.session_state
+
+    if ss.pop("ipf_msg", None):
+        st.success("Pesos cargados: las tablas y los gráficos ya están actualizados.")
+
+    if not reparto_horario(sits):
+        st.info("Las situaciones de aprendizaje no tienen horas.")
+        return
+
+    presentes = instrumentos_presentes(il_rows)
+    lista_ie = list(ss.get("il_aux", {}).get("IE", []))
+    ies = presentes + [ie for ie in lista_ie if ie not in presentes]
+    if not ies:
+        st.info("Todavía no hay indicadores con instrumento de evaluación asignado.")
+        return
+
+    actual = reparto_ie_actual(il_rows, ce_p)
+    if "ipf_obj_df" not in ss or list(ss.ipf_obj_df["Instrumento"]) != ies:
+        ss.ipf_obj_df = pd.DataFrame(
+            {"Instrumento": ies,
+             "Objetivo (%)": [round(actual.get(ie, 0.0), 1) for ie in ies]}
+        )
+
+    col_obj, col_sug = st.columns([1, 1], gap="large")
+
+    with col_obj:
+        st.markdown('<div class="mini-label">Distribución de pesos por instrumento (deben sumar 100 %)</div>', unsafe_allow_html=True)
+        ed = st.data_editor(
+            ss.ipf_obj_df, hide_index=True, use_container_width=True, key="ipf_obj_ed",
+            column_config={
+                "Instrumento": st.column_config.TextColumn(disabled=True),
+                "Objetivo (%)": st.column_config.NumberColumn(
+                    min_value=0.0, max_value=100.0, step=0.5, format="%.1f"
+                ),
+            },
+        )
+        obj = {r["Instrumento"]: float(r["Objetivo (%)"] or 0.0) for _, r in ed.iterrows()}
+        suma = sum(obj.values())
+        suma_ok = abs(suma - 100) <= 0.5
+        st.caption(
+            f"Σ = {suma:.1f} %" if suma_ok
+            else f"Σ = {suma:.1f} % — deben sumar 100 % para poder cargar."
+        )
+
+    obj_ipf = {ie: v for ie, v in obj.items() if v > 0 or ie in presentes}
+    res = sugerir_pesos(il_rows, sits, obj_ipf, max_iter=1000)
+    pce, pil = res["p_por_ce"], res["pil_por_il"]
+
+    with col_sug:
+        st.markdown('<div class="mini-label">Sugerencia</div>', unsafe_allow_html=True)
+        _info = {r["IL"]: r for r in il_rows}
+        _tab_p, _tab_il = st.tabs([f"P por CE ({len(ce_list)})", f"PIL por IL ({len(pil)})"])
+        _tab_p.dataframe(
+            pd.DataFrame([{"CE": ce, "P sugerido": pce.get(ce, 0)} for ce in ce_list]),
+            hide_index=True, use_container_width=True, height=240,
+        )
+        _tab_il.dataframe(
+            pd.DataFrame([
+                {"IL": il, "CE": _info.get(il, {}).get("CE", ""), "PIL sugerido": v}
+                for il, v in pil.items()
+            ]),
+            hide_index=True, use_container_width=True, height=240,
+        )
+
+    b1, b2, b3 = st.columns(3)
+    if b1.button("Cargar P y PIL", type="primary", use_container_width=True,
+                 disabled=not suma_ok, key="ipf_all"):
+        _ipf_cargar(pce, pil, ce_ced, ce_list)
+    if b2.button("Cargar solo P", use_container_width=True,
+                 disabled=not suma_ok, key="ipf_p"):
+        _ipf_cargar(pce, None, ce_ced, ce_list)
+    if b3.button("Cargar solo PIL", use_container_width=True,
+                 disabled=not suma_ok, key="ipf_pil"):
+        _ipf_cargar(None, pil, ce_ced, ce_list)
+
+
 def _aplicar_regeneracion(issues):
     """Aplica en sesión los arreglos automáticos de los desajustes fixables:
     1 IL en blanco por CE sin indicador, quita actividades huérfanas y regenera
@@ -539,10 +925,8 @@ elif page == "Diseño de la programación":
             zebra_styler,
         )
 
-        # ───────────────── BLOQUE: SITUACIONES DE APRENDIZAJE ─────────────────
-        st.markdown('<div class="block-head">Situaciones de aprendizaje</div>', unsafe_allow_html=True)
-
-        with st.container(border=True):
+        # ───────────────── SECCIÓN: SITUACIONES DE APRENDIZAJE ─────────────────
+        with _seccion("Situaciones de aprendizaje", 0, abierto=True):
             from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
             st.session_state.setdefault("sa_nonce", 0)
@@ -781,15 +1165,16 @@ elif page == "Diseño de la programación":
             if errores:
                 st.warning("Situaciones — avisos:\n\n- " + "\n- ".join(errores))
 
+        # ───────────────── SECCIÓN: CALCULADORA DE SESIONES ─────────────────
+        _calc_sesiones_por_evaluacion()
+
         ce_list = st.session_state.il_ce_list
         ce_ced = st.session_state.il_ce_ced
         aux = st.session_state.il_aux
         sa_options = sorted({s.sa for s in sits if s.sa})
 
-        # ───────────────── BLOQUE: CRITERIOS DE EVALUACIÓN ─────────────────
-        st.markdown('<div class="block-head">Criterios de evaluación</div>', unsafe_allow_html=True)
-
-        with st.container(border=True):
+        # ───────────────── SECCIÓN: CRITERIOS DE EVALUACIÓN ─────────────────
+        with _seccion("Criterios de evaluación", 2, abierto=True):
             from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
             st.session_state.setdefault("ce_nonce", 0)
@@ -885,9 +1270,7 @@ elif page == "Diseño de la programación":
         # Pesos vigentes (en vivo desde la rejilla) para todos los cálculos.
         ce_p = dict(ce_pending)
 
-        # ───────────────── BLOQUE: INDICADORES DE LOGRO ─────────────────
-        st.markdown('<div class="block-head">Indicadores de logro</div>', unsafe_allow_html=True)
-
+        # ───────────────── SECCIÓN: INDICADORES DE LOGRO ─────────────────
         def _with_existing(options, key):
             # Los SelectboxColumn de Streamlit fallan si una celda tiene un valor
             # que no está en las opciones; añadimos los valores ya presentes al
@@ -932,7 +1315,7 @@ elif page == "Diseño de la programación":
                 "SA": None if r.get("SA") in (None, "") or pd.isna(r.get("SA")) else int(float(r.get("SA"))),
             }
 
-        with st.container(border=True):
+        with _seccion("Indicadores de logro", 3, abierto=True):
             st.markdown(
                 '<div class="mini-label">CE se elige de la lista · CED e IL (4.2.1, 4.2.2…) '
                 "son automáticos · PIL a mano, PIL% automático · SA solo entre las de arriba · "
@@ -1117,20 +1500,24 @@ elif page == "Diseño de la programación":
                 ),
                 height=40,
             )
-            with st.expander("Ver resumen por criterio", expanded=False):
+            if st.toggle("Ver resumen por criterio", key="il_ver_resumen"):
                 st.dataframe(
                     zebra_styler(pd.DataFrame(_res_rows, columns=_res_headers)),
                     use_container_width=True,
                     hide_index=True,
                 )
 
-        # ─────── BLOQUE: DISTRIBUCIÓN DE PORCENTAJES POR CE Y SA ───────
-        st.markdown(
-            '<div class="block-head">Distribución de porcentajes por criterios de '
-            "evaluación y situaciones de aprendizaje</div>",
-            unsafe_allow_html=True,
-        )
-        with st.container(border=True):
+        # ─── SECCIÓN: AJUSTE DE PESOS ───
+        with _seccion("Ajuste de pesos (objetivo por instrumento + reparto horario)", 4):
+            _ajuste_pesos_ipf(
+                il_recompute(pending, ce_ced, ce_list), ce_list, ce_ced, ce_p, sits
+            )
+
+        # ─────── SECCIÓN: DISTRIBUCIÓN DE PORCENTAJES POR CE Y SA ───────
+        with _seccion(
+            "Distribución de porcentajes por criterios de evaluación y "
+            "situaciones de aprendizaje", 5, abierto=True,
+        ):
             from st_aggrid import AgGrid, ColumnsAutoSizeMode, GridOptionsBuilder
             from tools.indicadores_logro import matriz_sa_ce
             from tools.situaciones_informe import (
@@ -1228,12 +1615,8 @@ elif page == "Diseño de la programación":
                     use_container_width=True, key="dl_cmp_png",
                 )
 
-        # ─────── BLOQUE: PESO FINAL POR INSTRUMENTO DE EVALUACIÓN ───────
-        st.markdown(
-            '<div class="block-head">Peso final por instrumento de evaluación</div>',
-            unsafe_allow_html=True,
-        )
-        with st.container(border=True):
+        # ─────── SECCIÓN: PESO FINAL POR INSTRUMENTO DE EVALUACIÓN ───────
+        with _seccion("Peso final por instrumento de evaluación", 6):
             from tools.indicadores_logro import peso_por_ie
             from tools.situaciones_informe import build_pie_png_simple
 
@@ -1333,12 +1716,10 @@ elif page == "Contenidos":
                    height=min(460, 44 + 28 * len(df)), theme="balham",
                    update_on=[], key=grid_key)
 
-        st.markdown('<div class="block-head">Contenidos de la materia</div>', unsafe_allow_html=True)
-        with st.container(border=True):
+        if _seccion_simple("Contenidos de la materia", "con_mat", abierto=True):
             _render(_el["contenidos"], "cod", "desc", "Código", _con_used, "ec_grid_con")
 
-        st.markdown('<div class="block-head">Contenidos transversales</div>', unsafe_allow_html=True)
-        with st.container(border=True):
+        if _seccion_simple("Contenidos transversales", "con_tr", abierto=True):
             _render(_el["transversales"], "num", "desc", "Nº", _ct_used, "ec_grid_ct")
 
 # PÁGINA: PROGRAMACIÓN DE AULA
@@ -1425,15 +1806,14 @@ elif page == "Programación de aula":
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             )
 
-        # ── BLOQUE: Datos generales
-        st.markdown('<div class="block-head">Datos generales</div>', unsafe_allow_html=True)
+        # ── SECCIÓN: Datos generales
         _LARGOS = {
             "alumnos_atencion_individualizada", "caracteristicas_fisicas_cognitivas_afectivas",
             "nivel_competencia_curricular", "otras_caracteristicas_grupo",
             "resultados_evaluacion_inicial", "conclusiones_evaluacion_inicial",
             "resultados_evaluacion_aprendizajes", "revision_programacion",
         }
-        with st.container(border=True):
+        if _seccion_simple("Datos generales", "pa_datos", abierto=True):
             _cortos = [k for k in ss.pa_campos_datos if k not in _LARGOS]
             _cc = st.columns(2)
             for i, k in enumerate(_cortos):
@@ -1442,12 +1822,8 @@ elif page == "Programación de aula":
                 if k in _LARGOS:
                     ss.pa_datos[k] = st.text_area(_hum(k), value=ss.pa_datos.get(k, ""), key=f"pad_{k}", height=90)
 
-        # ── BLOQUE: Actividades por situación de aprendizaje
-        st.markdown(
-            '<div class="block-head">Diseño de actividades por situación de aprendizaje</div>',
-            unsafe_allow_html=True,
-        )
-        with st.container(border=True):
+        # ── SECCIÓN: Actividades por situación de aprendizaje
+        if _seccion_simple("Diseño de actividades por situación de aprendizaje", "pa_act", abierto=True):
             _lbl = {sa: f"{sa}: {d}" for sa, d in _sa_opts}
             sa_sel = st.selectbox(
                 "Situación de aprendizaje", [sa for sa, _ in _sa_opts],

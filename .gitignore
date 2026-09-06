@@ -8,6 +8,12 @@ __pycache__/
 # Salida generada / archivos de prueba: no se sube nada de aquí
 salida/
 
+# Archivos de ejemplo para experimentos
+ejemplos/
+
+#Otras gaitas
+.claude/
+
 # Excels de trabajo/prueba en la raíz (datos de programación reales)
 /*.xlsx
 /*.xlsm
