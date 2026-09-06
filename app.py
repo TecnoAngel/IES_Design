@@ -1150,6 +1150,51 @@ elif page == "Diseño de la programación":
                     use_container_width=True, key="dl_cmp_png",
                 )
 
+        # ─────── BLOQUE: PESO FINAL POR INSTRUMENTO DE EVALUACIÓN ───────
+        st.markdown(
+            '<div class="block-head">Peso final por instrumento de evaluación</div>',
+            unsafe_allow_html=True,
+        )
+        with st.container(border=True):
+            from tools.indicadores_logro import peso_por_ie
+            from tools.situaciones_informe import build_pie_png_simple
+
+            _ie = peso_por_ie(il_recompute(pending, ce_ced, ce_list), ce_p)
+            _ie_headers = ["Instrumento de evaluación", "% acumulado"]
+            _ie_rows = [
+                [k, f"{v * 100:.2f}".replace(".", ",") + " %"] for k, v in _ie
+            ]
+            _ie_rows.append(
+                ["Total", f"{sum(v for _, v in _ie) * 100:.2f}".replace(".", ",") + " %"]
+            )
+            _iec1, _iec2 = st.columns([2, 2.3], gap="large")
+            with _iec1:
+                st.dataframe(
+                    pd.DataFrame(_ie_rows, columns=_ie_headers),
+                    use_container_width=True, hide_index=True,
+                )
+                components.html(
+                    build_html_table_copy_html(
+                        render_word_table_html(_ie_headers, _ie_rows),
+                        btn_id="ie-copy-tab", fn="ieCopyTab", label="Copiar tabla (Word)",
+                    ),
+                    height=40,
+                )
+            with _iec2:
+                _ie_png = build_pie_png_simple(
+                    [k for k, _ in _ie], [v for _, v in _ie],
+                    titulo="Peso por instrumento de evaluación", leyenda="Instrumento",
+                )
+                st.image(_ie_png, use_container_width=True)
+                _g1, _g2 = st.columns(2)
+                with _g1:
+                    components.html(build_image_copy_html(_ie_png), height=40)
+                with _g2:
+                    st.download_button(
+                        "Descargar PNG", data=_ie_png, file_name="peso_por_IE.png",
+                        mime="image/png", use_container_width=True, key="dl_ie_png",
+                    )
+
 # PÁGINA: CONTENIDOS
 elif page == "Contenidos":
     st.markdown(

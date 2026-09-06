@@ -277,6 +277,29 @@ def matriz_sa_ce(
     }
 
 
+def peso_por_ie(rows: list[dict], ce_p: dict[str, float] | None = None) -> list[tuple[str, float]]:
+    """Peso acumulado por instrumento de evaluación (IE), como la dinámica
+    ``Medida_porcentajes_IE`` de INFORMES: para cada IL su peso sobre toda la
+    programación (``PIL%_CE · %CE``), sumado por IE. Ordenado de mayor a menor."""
+    ce_p = ce_p or {}
+    total_p = sum(ce_p.values())
+    sum_pil_ce: dict[str, float] = {}
+    for r in rows:
+        sum_pil_ce[_s(r.get("CE"))] = sum_pil_ce.get(_s(r.get("CE")), 0.0) + float(r.get("PIL") or 0)
+
+    por_ie: dict[str, float] = {}
+    for r in rows:
+        ie = _s(r.get("IE"))
+        if not ie:
+            continue
+        ce = _s(r.get("CE"))
+        spil = sum_pil_ce.get(ce, 0.0)
+        pce = ce_p.get(ce, 0.0)
+        w = (float(r.get("PIL") or 0) / spil if spil else 0.0) * (pce / total_p if total_p else 0.0)
+        por_ie[ie] = por_ie.get(ie, 0.0) + w
+    return sorted(por_ie.items(), key=lambda kv: -kv[1])
+
+
 def resumen_por_ce(
     rows: list[dict],
     ce_list: list[str],

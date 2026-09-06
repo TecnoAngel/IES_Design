@@ -58,6 +58,43 @@ def hsa_share(situaciones: list[Situacion]) -> list[dict]:
     return out
 
 
+def build_pie_png_simple(
+    labels: list[str],
+    values: list[float],
+    *,
+    titulo: str,
+    leyenda: str = "",
+    dpi: int = 150,
+) -> bytes:
+    """Gráfico de sectores genérico (etiquetas + valores) con leyenda al lado."""
+    pares = [(l, v) for l, v in zip(labels, values) if v]
+    fig, ax = plt.subplots(figsize=(8.0, 4.6))
+    if not pares:
+        ax.text(0.5, 0.5, "Sin datos", ha="center", va="center")
+        ax.axis("off")
+    else:
+        ls, vs = zip(*pares)
+        colores = [_color_hex(i) for i in range(len(ls))]
+        wedges, _t, autos = ax.pie(
+            vs, colors=colores, autopct=lambda p: f"{p:.1f}%", pctdistance=0.78,
+            startangle=90, counterclock=False,
+            wedgeprops={"linewidth": 1, "edgecolor": "white"},
+        )
+        for t in autos:
+            t.set_fontsize(8)
+            t.set_color("#1a1a1a")
+        ax.axis("equal")
+        ax.set_title(titulo, fontsize=12, fontweight="bold", color=JCYL_RED, pad=16)
+        ax.legend(
+            wedges, ls, title=leyenda or None, loc="center left",
+            bbox_to_anchor=(1.0, 0.5), fontsize=8, title_fontsize=9, frameon=False,
+        )
+    buffer = BytesIO()
+    fig.savefig(buffer, format="png", dpi=dpi, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return buffer.getvalue()
+
+
 def build_pie_png(shares: list[dict], *, dpi: int = 150) -> bytes:
     """Gráfico de sectores del reparto de horas, con leyenda 'nº: descripción'."""
     if not shares:
