@@ -40,7 +40,7 @@ def _favicon():
         return "🗂️"
 
 
-st.set_page_config(page_title="IES Manager", page_icon=_favicon(), layout="wide")
+st.set_page_config(page_title="IES Diseño", page_icon=_favicon(), layout="wide")
 
 if (ROOT / "logo_junta.jpg").exists():
     try:
@@ -60,7 +60,7 @@ if _faltan:
     st.error(
         "Faltan dependencias: **" + ", ".join(_faltan) + "**.\n\n"
         "Seguramente has lanzado la app con el entorno virtual de otro proyecto. "
-        "Desde `IES_Manager`, ejecútala con su propio venv:\n\n"
+        "Desde la carpeta del proyecto, ejecútala con su propio venv:\n\n"
         "```\n.\\.venv\\Scripts\\python.exe -m streamlit run app.py --server.port 8502\n```\n\n"
         "o directamente `.\\run_app.bat`. Si falta el venv: "
         "`python -m venv .venv ; .venv\\Scripts\\python.exe -m pip install -r requirements.txt`."
@@ -152,9 +152,9 @@ st.markdown(
     }
     </style>
     <div class="topbar">
-        <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.18em; opacity: 0.9; margin-bottom: 0.25rem;">Panel de gestión</div>
-        <div class="topbar-title">IES Manager</div>
-        <div class="topbar-sub">Gestión del día a día del departamento.</div>
+        <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.18em; opacity: 0.9; margin-bottom: 0.25rem;">Programación didáctica</div>
+        <div class="topbar-title">IES Diseño</div>
+        <div class="topbar-sub">Diseño y revisión de la programación sobre tu propio Excel.</div>
     </div>
     """,
     unsafe_allow_html=True,

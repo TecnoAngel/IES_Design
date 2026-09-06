@@ -1,7 +1,8 @@
-# IES Manager
+# IES Diseño
 
-Aplicación Streamlit para la gestión del día a día del departamento, con la misma
-estructura que IES Creator.
+Aplicación Streamlit para diseñar y revisar la programación didáctica editando
+directamente el Excel de programación, sin romperlo. Misma estructura que IES
+Creator (antes se llamó «IES Manager»).
 
 ## Requisitos
 
