@@ -819,7 +819,9 @@ elif page == "Diseño de la programación":
             if grid_df.empty or "CE" not in grid_df.columns:
                 grid_df = il_df.copy()
             pending = [_parse_grid_row(r) for _, r in grid_df.iterrows()]
-            st.session_state.il_pending = pending
+            # para consumidores externos (Elementos, Programación de aula) se guarda
+            # ya recalculado: con IL/CED/PIL% rellenos.
+            st.session_state.il_pending = il_recompute(pending, ce_ced, ce_list)
 
             def _truthy(v):
                 return str(v).strip().lower() in ("true", "1", "yes", "x")
@@ -1116,7 +1118,13 @@ elif page == "Programación de aula":
             ss.pa_sa_edits = {}
         ss.setdefault("pa_nonce", 0)
 
-        _il_state = ss.get("il_pending") or ss.get("il_rows") or []
+        # Indicadores de logro ya recalculados (IL/SA/PIL rellenos). Se toma el
+        # estado canónico (il_rows); si hay edición reciente en Diseño con IL
+        # válidos, esa.
+        _il_state = ss.get("il_rows") or []
+        _ilp = ss.get("il_pending")
+        if _ilp and all(r.get("IL") for r in _ilp):
+            _il_state = _ilp
         _il_sa = {r["IL"]: r["SA"] for r in _il_state}
         _pil_por_il = {r["IL"]: float(r["PIL"] or 0) for r in _il_state}
         _ce_p = {r["CE"]: r["P"] for r in ss.get("ce_rows", [])} or dict(ss.get("il_ce_p", {}))
