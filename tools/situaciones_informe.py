@@ -104,41 +104,90 @@ def build_pie_png(shares: list[dict], *, dpi: int = 150) -> bytes:
     return buffer.getvalue()
 
 
-def _table_html(shares: list[dict]) -> str:
-    """Tabla en HTML lista para pegar en Word (bordes en línea, sin CSS externo)."""
-    th = (
-        'style="border:1px solid #666;padding:4px 8px;background:#000;color:#fff;'
-        'text-align:left;font-family:Calibri,Arial,sans-serif;"'
-    )
-    td = 'style="border:1px solid #666;padding:4px 8px;font-family:Calibri,Arial,sans-serif;"'
-    tdc = td.replace("padding:4px 8px;", "padding:4px 8px;text-align:center;")
+def _fmt_pct2(value: float) -> str:
+    return f"{value * 100:.2f}".replace(".", ",") + " %"
 
-    filas = []
-    for s in shares:
-        pct = f"{s['pct'] * 100:.2f}".replace(".", ",") + " %"
-        filas.append(
-            f"<tr>"
-            f"<td {tdc}>{'' if s['sa'] is None else s['sa']}</td>"
-            f"<td {td}>{html_lib.escape(s['dsa'])}</td>"
-            f"<td {tdc}>{'' if s['ev'] is None else s['ev']}</td>"
-            f"<td {tdc}>{s['horas']}</td>"
-            f"<td {tdc}>{pct}</td>"
-            f"</tr>"
+
+def build_sa_compare_png(
+    sa_rows: list[int],
+    labels: list[str],
+    pct_il: list[float],
+    pct_horas: list[float],
+    *,
+    dpi: int = 150,
+) -> bytes:
+    """Barras agrupadas: peso de cada SA según los IL asignados vs. según horas."""
+    import numpy as np
+
+    n = len(sa_rows)
+    fig, ax = plt.subplots(figsize=(max(7.0, n * 0.7), 4.8))
+    if n:
+        x = np.arange(n)
+        w = 0.4
+        ax.bar(x - w / 2, [p * 100 for p in pct_il], w, label="Según IL asignados", color="#764ba2")
+        ax.bar(x + w / 2, [p * 100 for p in pct_horas], w, label="Según carga de horas", color="#f0a500")
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
+        ax.set_ylabel("% sobre el total")
+        ax.set_title(
+            "Peso de cada situación de aprendizaje: IL asignados vs. carga de horas",
+            fontsize=11, fontweight="bold", pad=12,
         )
+        ax.legend(fontsize=8, frameon=False)
+        ax.spines[["top", "right"]].set_visible(False)
+        ax.yaxis.grid(True, color="#e6e6e6")
+        ax.set_axisbelow(True)
+    else:
+        ax.text(0.5, 0.5, "Sin datos", ha="center", va="center")
+        ax.axis("off")
+    buffer = BytesIO()
+    fig.savefig(buffer, format="png", dpi=dpi, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return buffer.getvalue()
 
-    total_h = sum(float(s["horas"]) for s in shares)
-    total_h = int(total_h) if float(total_h).is_integer() else total_h
-    filas.append(
-        f'<tr><td {td}><b>Total</b></td><td {td}></td><td {tdc}></td>'
-        f'<td {tdc}><b>{total_h}</b></td><td {tdc}><b>100,00 %</b></td></tr>'
+
+def render_word_table_html(headers: list[str], rows: list[list]) -> str:
+    """Tabla HTML lista para pegar en Word (estilos en línea, sin CSS externo).
+
+    Cabecera centrada horizontal y verticalmente; el resto de celdas centradas
+    verticalmente y alineadas a la izquierda."""
+    th = (
+        'style="border:1px solid #666;padding:5px 9px;background:#000;color:#fff;'
+        'text-align:center;vertical-align:middle;font-family:Calibri,Arial,sans-serif;"'
     )
-
+    td = (
+        'style="border:1px solid #666;padding:4px 9px;text-align:left;'
+        'vertical-align:middle;font-family:Calibri,Arial,sans-serif;"'
+    )
+    body = []
+    for row in rows:
+        cells = "".join(
+            f"<td {td}>{'' if v is None else html_lib.escape(str(v))}</td>" for v in row
+        )
+        body.append(f"<tr>{cells}</tr>")
+    head = "".join(f"<th {th}>{html_lib.escape(str(h))}</th>" for h in headers)
     return (
         '<table style="border-collapse:collapse;">'
-        f"<thead><tr>"
-        f"<th {th}>SA</th><th {th}>Situación de aprendizaje</th>"
-        f"<th {th}>Ev.</th><th {th}>Horas</th><th {th}>% sobre el total</th>"
-        f"</tr></thead><tbody>{''.join(filas)}</tbody></table>"
+        f"<thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>"
+    )
+
+
+def _table_html(shares: list[dict]) -> str:
+    rows = [
+        [
+            "" if s["sa"] is None else s["sa"],
+            s["dsa"],
+            "" if s["ev"] is None else s["ev"],
+            s["horas"],
+            _fmt_pct2(s["pct"]),
+        ]
+        for s in shares
+    ]
+    total_h = sum(float(s["horas"]) for s in shares)
+    total_h = int(total_h) if float(total_h).is_integer() else total_h
+    rows.append(["Total", "", "", total_h, "100,00 %"])
+    return render_word_table_html(
+        ["SA", "Situación de aprendizaje", "Ev.", "Horas", "% sobre el total"], rows
     )
 
 
@@ -212,35 +261,6 @@ def build_table_copy_html(shares: list[dict]) -> str:
         .replace("__FN__", "siCopyTable")
         .replace("__LABEL__", "Copiar tabla")
         .replace("__BODY__", body)
-    )
-
-
-def render_word_table_html(headers: list[str], rows: list[list], aligns: list[str] | None = None) -> str:
-    """Tabla HTML genérica lista para pegar en Word (estilos en línea)."""
-    th = (
-        'style="border:1px solid #666;padding:4px 8px;background:#000;color:#fff;'
-        'text-align:left;font-family:Calibri,Arial,sans-serif;vertical-align:top;"'
-    )
-    aligns = aligns or ["left"] * len(headers)
-
-    def _td(a):
-        return (
-            f'style="border:1px solid #666;padding:4px 8px;font-family:Calibri,Arial,sans-serif;'
-            f'text-align:{a};vertical-align:top;"'
-        )
-
-    body = []
-    for row in rows:
-        cells = "".join(
-            f"<td {_td(aligns[i] if i < len(aligns) else 'left')}>"
-            f"{'' if v is None else html_lib.escape(str(v))}</td>"
-            for i, v in enumerate(row)
-        )
-        body.append(f"<tr>{cells}</tr>")
-    head = "".join(f"<th {th}>{html_lib.escape(h)}</th>" for h in headers)
-    return (
-        '<table style="border-collapse:collapse;">'
-        f"<thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>"
     )
 
 

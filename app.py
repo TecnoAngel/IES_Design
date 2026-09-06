@@ -562,10 +562,7 @@ elif page == "Diseño de la programación":
                 ]
                 for r in _res
             ]
-            _res_table = render_word_table_html(
-                _res_headers, _res_rows,
-                aligns=["center", "center", "left", "center", "center"],
-            )
+            _res_table = render_word_table_html(_res_headers, _res_rows)
             st.markdown('<div class="mini-label">Resumen por criterio</div>', unsafe_allow_html=True)
             components.html(
                 build_html_table_copy_html(
@@ -611,6 +608,86 @@ elif page == "Diseño de la programación":
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True,
                     key="dlb_prog",
+                )
+
+        # ─────── BLOQUE: DISTRIBUCIÓN DE PORCENTAJES POR CE Y SA ───────
+        st.markdown(
+            '<div class="block-head">Distribución de porcentajes por criterios de '
+            "evaluación y situaciones de aprendizaje</div>",
+            unsafe_allow_html=True,
+        )
+        with st.container(border=True):
+            from tools.indicadores_logro import matriz_sa_ce
+            from tools.situaciones_informe import (
+                _fmt_pct2,
+                build_html_table_copy_html,
+                build_sa_compare_png,
+                render_word_table_html,
+            )
+
+            _il_now = il_recompute(pending, ce_ced, ce_list)
+            _m = matriz_sa_ce(_il_now, ce_list, ce_p)
+            sa_rows_m = _m["sa_rows"]
+            ce_cols_m = _m["ce_cols"]
+
+            _total_h = sum(float(s.hsa) for s in sits if s.hsa)
+            _dsa = {int(s.sa): s.dsa for s in sits if s.sa}
+            _pct_h = {
+                int(s.sa): (float(s.hsa) / _total_h if (s.hsa and _total_h) else 0.0)
+                for s in sits if s.sa
+            }
+
+            st.markdown(
+                '<div class="mini-label">Peso de cada SA sobre el total de la programación, '
+                "por criterio (según los IL asignados) · «Total (IL)» = suma de la fila · "
+                "«% SA (horas)» = reparto de horas de la tabla de arriba, para comparar</div>",
+                unsafe_allow_html=True,
+            )
+
+            _headers = ["SA"] + ce_cols_m + ["Total (IL)", "% SA (horas)"]
+            _body = []
+            for sa in sa_rows_m:
+                r = [str(sa)]
+                for c in ce_cols_m:
+                    v = _m["matrix"].get((sa, c), 0.0)
+                    r.append(_fmt_pct2(v) if v else "")
+                r.append(_fmt_pct2(_m["sa_total"].get(sa, 0.0)))
+                r.append(_fmt_pct2(_pct_h.get(sa, 0.0)))
+                _body.append(r)
+            _tot = ["Total general"]
+            _tot += [_fmt_pct2(_m["ce_total"].get(c, 0.0)) for c in ce_cols_m]
+            _tot.append(_fmt_pct2(_m["grand_total"]))
+            _tot.append(_fmt_pct2(sum(_pct_h.values())))
+            _body.append(_tot)
+
+            st.dataframe(
+                pd.DataFrame(_body, columns=_headers),
+                use_container_width=True, hide_index=True,
+            )
+            components.html(
+                build_html_table_copy_html(
+                    render_word_table_html(_headers, _body),
+                    btn_id="mx-copy-tab", fn="mxCopyTab", label="Copiar tabla (Word)",
+                ),
+                height=40,
+            )
+
+            st.divider()
+            _labels = [f"{sa}: {_dsa.get(sa, '')}" for sa in sa_rows_m]
+            _cmp_png = build_sa_compare_png(
+                sa_rows_m, _labels,
+                [_m["sa_total"].get(sa, 0.0) for sa in sa_rows_m],
+                [_pct_h.get(sa, 0.0) for sa in sa_rows_m],
+            )
+            st.image(_cmp_png, use_container_width=True)
+            gc1, gc2, _ = st.columns([1, 1, 3])
+            with gc1:
+                components.html(build_image_copy_html(_cmp_png), height=40)
+            with gc2:
+                st.download_button(
+                    "Descargar PNG", data=_cmp_png,
+                    file_name="peso_SA_IL_vs_horas.png", mime="image/png",
+                    use_container_width=True, key="dl_cmp_png",
                 )
 
 # PÁGINA: LOMLOE

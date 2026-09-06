@@ -176,6 +176,59 @@ def _split_tokens(value: Any) -> list[str]:
     return out
 
 
+def matriz_sa_ce(
+    rows: list[dict],
+    ce_list: list[str],
+    ce_p: dict[str, float] | None = None,
+) -> dict:
+    """Réplica de la tabla dinámica "DISTRIBUCIÓN DE PORCENTAJES POR CRITERIOS DE
+    EVALUACIÓN Y SITUACIONES DE APRENDIZAJE" de la hoja INFORMES.
+
+    Para cada indicador de logro, su peso sobre TODA la programación es
+    ``(PIL / ΣPIL del CE) × (P del CE / ΣP)``. La matriz agrupa esos pesos por
+    (SA, CE). Los totales por fila dan el peso de cada SA según los IL asignados.
+    """
+    ce_p = ce_p or {}
+    total_p = sum(ce_p.values())
+
+    sum_pil: dict[str, float] = {}
+    for r in rows:
+        ce = _s(r.get("CE"))
+        pil = r.get("PIL")
+        pil = 0.0 if pil in (None, "") else float(pil)
+        sum_pil[ce] = sum_pil.get(ce, 0.0) + pil
+
+    matrix: dict[tuple[int, str], float] = {}
+    sa_set: set[int] = set()
+    for r in rows:
+        ce = _s(r.get("CE"))
+        sa = r.get("SA")
+        if sa in (None, "") or not ce:
+            continue
+        sa = int(sa)
+        pil = r.get("PIL")
+        pil = 0.0 if pil in (None, "") else float(pil)
+        spil = sum_pil.get(ce, 0.0)
+        pce = ce_p.get(ce, 0.0)
+        w = (pil / spil if spil else 0.0) * (pce / total_p if total_p else 0.0)
+        matrix[(sa, ce)] = matrix.get((sa, ce), 0.0) + w
+        sa_set.add(sa)
+
+    sa_rows = sorted(sa_set)
+    ce_cols = [c for c in ce_list if c in sum_pil] or list(sum_pil.keys())
+    sa_total = {sa: sum(matrix.get((sa, c), 0.0) for c in ce_cols) for sa in sa_rows}
+    ce_total = {c: sum(matrix.get((sa, c), 0.0) for sa in sa_rows) for c in ce_cols}
+    grand = sum(sa_total.values())
+    return {
+        "matrix": matrix,
+        "sa_rows": sa_rows,
+        "ce_cols": ce_cols,
+        "sa_total": sa_total,
+        "ce_total": ce_total,
+        "grand_total": grand,
+    }
+
+
 def resumen_por_ce(
     rows: list[dict],
     ce_list: list[str],
