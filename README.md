@@ -1,8 +1,6 @@
 # IES Diseño
 
-Aplicación Streamlit para diseñar y revisar la programación didáctica editando
-directamente el Excel de programación, sin romperlo. Misma estructura que IES
-Creator (antes se llamó «IES Manager»).
+Aplicación Streamlit para diseñar y revisar la programación didáctica y de aula
 
 ## Requisitos
 
@@ -23,7 +21,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-o `run_app.bat` (usa el puerto 8502 para no chocar con IES Creator).
+o `run_app.bat` (usa el puerto 8502).
 
 ## Funcionalidades
 
