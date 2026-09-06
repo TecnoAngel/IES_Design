@@ -391,8 +391,9 @@ elif page == "Diseño de la programación":
             st.markdown(
                 '<div class="mini-label">CE se elige de la lista · CED e IL (4.2.1, 4.2.2…) '
                 "son automáticos · PIL a mano, PIL% automático · SA solo entre las de arriba · "
-                "escribe libremente y pulsa <b>Actualizar</b> para agrupar por criterio y "
-                "renumerar (los cambios no se pierden hasta entonces)</div>",
+                "pasa el ratón por CED/DIL para ver el texto completo · marca la casilla de la "
+                "izquierda y pulsa <b>Borrar</b> · escribe y pulsa <b>Actualizar</b> para agrupar "
+                "por criterio y renumerar (nada se pierde hasta entonces)</div>",
                 unsafe_allow_html=True,
             )
 
@@ -400,64 +401,69 @@ elif page == "Diseño de la programación":
             add_ce = ac1.selectbox("Criterio", ce_list, key="il_add_ce", label_visibility="collapsed")
             add_n = ac2.number_input("nº", 1, 20, 1, key="il_add_n", label_visibility="collapsed")
             add_click = ac3.button("Añadir al criterio", use_container_width=True)
-            del_click = ac4.button("Borrar seleccionadas", use_container_width=True)
+            del_click = ac4.button("Borrar marcadas", use_container_width=True)
             upd_click = ac5.button("Actualizar", use_container_width=True, type="primary")
 
             il_df = pd.DataFrame(
                 [
                     {
-                        "__id": i,
-                        "__shade": False,  # se calcula justo debajo
-                        "CE": r["CE"], "IL": r["IL"],
+                        "X": False,
+                        "CE": r["CE"], "CED": r["CED"], "IL": r["IL"],
                         "PIL": r["PIL"], "PIL%": r["PIL%"] * 100,
                         "DIL": r["DIL"], "DO": r["DO"], "CON": r["CON"], "CT": r["CT"],
                         "IE": r["IE"], "CC": r["CC"], "AE": r["AE"],
                         "SA": "" if r["SA"] in (None, "") else str(r["SA"]),
-                        "CED": r["CED"],
+                        "__shade": False,  # se calcula justo debajo
                     }
-                    for i, r in enumerate(st.session_state.il_rows)
+                    for r in st.session_state.il_rows
                 ],
-                columns=["__id", "__shade", "CE", "IL", "PIL", "PIL%", "DIL", "DO",
-                         "CON", "CT", "IE", "CC", "AE", "SA", "CED"],
+                columns=["X", "CE", "CED", "IL", "PIL", "PIL%", "DIL", "DO",
+                         "CON", "CT", "IE", "CC", "AE", "SA", "__shade"],
             )
             _ce_seq = list(dict.fromkeys(r["CE"] for r in st.session_state.il_rows))
             _ce_shade = {ce: (i % 2 == 1) for i, ce in enumerate(_ce_seq)}
             il_df["__shade"] = il_df["CE"].map(lambda c: bool(_ce_shade.get(c)))
+            il_df["X"] = il_df["X"].astype(bool)
 
-            _sel_editor = {"values": ce_col_opts}
             gb = GridOptionsBuilder.from_dataframe(il_df)
             gb.configure_default_column(editable=True, resizable=True, sortable=False, filter=False)
-            gb.configure_column("__id", hide=True)
             gb.configure_column("__shade", hide=True)
-            gb.configure_column("CE", width=80, cellEditor="agSelectCellEditor", cellEditorParams=_sel_editor)
-            gb.configure_column("IL", editable=False, width=80)
             gb.configure_column(
-                "PIL", width=80, type=["numericColumn"],
+                "X", headerName="", editable=True, width=44, pinned="left",
+                cellRenderer="agCheckboxCellRenderer", cellEditor="agCheckboxCellEditor",
+                cellDataType="boolean", headerTooltip="Marca y pulsa «Borrar»",
+            )
+            gb.configure_column("CE", width=78, pinned="left", cellEditor="agSelectCellEditor",
+                                cellEditorParams={"values": ce_col_opts})
+            gb.configure_column("CED", editable=False, width=130, tooltipField="CED")
+            gb.configure_column("IL", editable=False, width=78)
+            gb.configure_column(
+                "PIL", width=70, type=["numericColumn"],
                 valueFormatter=JsCode(
                     "function(p){return p.value===''||p.value==null?'':Number(p.value).toFixed(2)}"
                 ),
             )
             gb.configure_column(
-                "PIL%", editable=False, width=90,
+                "PIL%", editable=False, width=82,
                 valueFormatter=JsCode(
                     "function(p){return p.value==null?'':Number(p.value).toFixed(2)+' %'}"
                 ),
             )
-            gb.configure_column("DIL", width=260)
-            gb.configure_column("DO", width=200)
-            gb.configure_column("CON", width=140)
-            gb.configure_column("CT", width=90)
-            gb.configure_column("IE", width=150, cellEditor="agSelectCellEditor",
+            gb.configure_column("DIL", width=240, tooltipField="DIL")
+            gb.configure_column("DO", width=180, tooltipField="DO")
+            gb.configure_column("CON", width=130, tooltipField="CON")
+            gb.configure_column("CT", width=80, tooltipField="CT")
+            gb.configure_column("IE", width=140, cellEditor="agSelectCellEditor",
                                 cellEditorParams={"values": _with_existing(aux.get("IE", []), "IE")})
-            gb.configure_column("CC", width=140, cellEditor="agSelectCellEditor",
+            gb.configure_column("CC", width=130, cellEditor="agSelectCellEditor",
                                 cellEditorParams={"values": _with_existing(aux.get("CC", []), "CC")})
-            gb.configure_column("AE", width=80, cellEditor="agSelectCellEditor",
+            gb.configure_column("AE", width=70, cellEditor="agSelectCellEditor",
                                 cellEditorParams={"values": _with_existing(aux.get("AE", []), "AE")})
-            gb.configure_column("SA", width=70, cellEditor="agSelectCellEditor",
+            gb.configure_column("SA", width=62, cellEditor="agSelectCellEditor",
                                 cellEditorParams={"values": [str(x) for x in sa_col_opts]})
-            gb.configure_column("CED", editable=False, width=220)
-            gb.configure_selection("multiple", use_checkbox=True, header_checkbox=True)
             gb.configure_grid_options(
+                enableBrowserTooltips=True,
+                tooltipShowDelay=300,
                 getRowStyle=JsCode(
                     "function(p){return (p.data && p.data.__shade) "
                     "? {'background-color':'#ece6f9'} : null}"
@@ -468,7 +474,7 @@ elif page == "Diseño de la programación":
             grid = AgGrid(
                 il_df,
                 gridOptions=gb.build(),
-                update_on=[("cellValueChanged", 400), "selectionChanged"],
+                update_on=[("cellValueChanged", 300)],
                 allow_unsafe_jscode=True,
                 fit_columns_on_grid_load=False,
                 height=430,
@@ -478,20 +484,15 @@ elif page == "Diseño de la programación":
 
             # Lo que hay ahora mismo en la rejilla (en su orden actual, sin agrupar).
             grid_df = pd.DataFrame(grid["data"])
-            if grid_df.empty:
+            if grid_df.empty or "CE" not in grid_df.columns:
                 grid_df = il_df.copy()
             pending = [_parse_grid_row(r) for _, r in grid_df.iterrows()]
             st.session_state.il_pending = pending
 
-            sel = grid["selected_rows"]
-            sel_ids = set()
-            if sel is not None:
-                sel_records = sel.to_dict("records") if isinstance(sel, pd.DataFrame) else sel
-                sel_ids = {int(s["__id"]) for s in sel_records if s.get("__id") is not None}
-            grid_ids = [
-                int(r["__id"]) if not pd.isna(r.get("__id")) else -1
-                for _, r in grid_df.iterrows()
-            ]
+            def _truthy(v):
+                return str(v).strip().lower() in ("true", "1", "yes", "x")
+
+            del_flags = [_truthy(r.get("X")) for _, r in grid_df.iterrows()]
 
             # Botones (reruns "de golpe", no molestos): reconstruyen la tabla ya
             # agrupada y renumerada, y remontan la rejilla (cambia il_nonce).
@@ -510,8 +511,8 @@ elif page == "Diseño de la programación":
                 st.session_state.pop("prog_out", None)
                 st.rerun()
 
-            if del_click and sel_ids:
-                kept = [p for p, i in zip(pending, grid_ids) if i not in sel_ids]
+            if del_click and any(del_flags):
+                kept = [p for p, d in zip(pending, del_flags) if not d]
                 st.session_state.il_rows = il_recompute(kept, ce_ced, ce_list)
                 st.session_state.il_nonce += 1
                 st.session_state.pop("prog_out", None)
