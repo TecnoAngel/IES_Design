@@ -193,6 +193,8 @@ with st.container(border=True):
             key="prog_excel_uploader",
             label_visibility="collapsed",
         )
+        if st.session_state.get("prog_sello_cargado"):
+            st.caption(f"Versión cargada: {st.session_state.prog_sello_cargado}")
     dl_box = ubar2.container()
 
 def _sa_pares():
@@ -239,6 +241,9 @@ if prog_excel is not None and st.session_state.get("prog_loaded_name") != prog_e
         st.session_state.il_aux = _il["aux"]
         st.session_state.elementos = read_elementos_curriculares(prog_excel)
         st.session_state.prog_loaded_name = prog_excel.name
+        from tools.sellado import leer_sello
+
+        st.session_state.prog_sello_cargado = leer_sello(prog_excel.getvalue())
         from tools.programacion_aula_editor import read_prog_aula
 
         _pae = read_prog_aula(prog_excel)
@@ -307,6 +312,9 @@ def _guardar_todo() -> bytes:
         _pil = {r["IL"]: float(r["PIL"] or 0) for r in il_g}
         data = save_actividades(_B(data), ss.get("pa_acts", []), _pil)
 
+    from tools.sellado import sellar
+
+    data, ss.prog_sello = sellar(data)
     return data
 
 
@@ -418,14 +426,21 @@ with dl_box:
         if st.session_state.get("prog_msg"):
             st.caption(f"⚠️ {st.session_state.prog_msg}")
         if st.session_state.get("prog_out"):
+            from tools.sellado import etiqueta_archivo
+
+            _sello = st.session_state.get("prog_sello", "")
+            _base = prog_excel.name.rsplit(".", 1)[0]
+            _fname = f"{_base}_{etiqueta_archivo(_sello)}.xlsx" if _sello else f"{_base}_actualizado.xlsx"
             st.download_button(
                 "Descargar .xlsx",
                 data=st.session_state.prog_out,
-                file_name=prog_excel.name.rsplit(".", 1)[0] + "_actualizado.xlsx",
+                file_name=_fname,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
                 key="dlb_prog",
             )
+            if _sello:
+                st.caption(f"Guardado: {_sello}")
 
 # PÁGINA: INICIO
 if page == "Inicio":
