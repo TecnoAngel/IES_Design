@@ -20,13 +20,21 @@ def _favicon():
     if not logo.exists():
         return "🗂️"
     try:
-        from PIL import Image
+        from PIL import Image, ImageDraw
 
-        im = Image.open(logo).convert("RGB")
-        emblem = im.crop((52, 10, 176, 210))  # corona + escudo, sin el texto
-        side = max(emblem.size) + 12
-        square = Image.new("RGB", (side, side), "white")
-        square.paste(emblem, ((side - emblem.width) // 2, (side - emblem.height) // 2))
+        e = Image.open(logo).convert("RGBA").crop((50, 8, 178, 212))
+        w, h = e.size
+        seeds = [(x, 0) for x in range(0, w, 6)] + [(x, h - 1) for x in range(0, w, 6)]
+        seeds += [(0, y) for y in range(0, h, 6)] + [(w - 1, y) for y in range(0, h, 6)]
+        for s in seeds:
+            try:
+                ImageDraw.floodfill(e, s, (255, 255, 255, 0), thresh=42)
+            except Exception:
+                pass
+        e = e.crop(e.getbbox())
+        side = max(e.size) + 8
+        square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+        square.paste(e, ((side - e.width) // 2, (side - e.height) // 2), e)
         return square.resize((128, 128), Image.LANCZOS)
     except Exception:
         return "🗂️"
