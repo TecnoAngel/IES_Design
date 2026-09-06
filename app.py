@@ -1186,10 +1186,19 @@ elif page == "Programación de aula":
             _acts_sa = [a for a in ss.pa_acts if a.get("IL") in _ils_sa]
             _acts_otras = [a for a in ss.pa_acts if a.get("IL") not in _ils_sa]
 
+            # Cada IL de la SA debe tener al menos una fila: si no hay ninguna
+            # actividad para ese IL, se muestra una en blanco para rellenar
+            # (peso vacío = fila de plantilla que no se guarda hasta tocarla).
+            _con_act = {a["IL"] for a in _acts_sa}
+            _acts_sa_disp = _acts_sa + [
+                {"IL": il, "A": "", "DA": "", "PA": None}
+                for il in _ils_sa if il not in _con_act
+            ]
+
             st.markdown(
                 f'<div class="mini-label">Actividades de los IL de esta SA '
-                f"({', '.join(_ils_sa) or '—'}) · solo se añaden/quitan de estos IL · "
-                "A (código) y PA%/FACTOR se recalculan al pulsar Actualizar</div>",
+                f"({', '.join(_ils_sa) or '—'}) · cada IL trae al menos una fila para rellenar "
+                "· A (código) y PA%/FACTOR se recalculan al pulsar Actualizar</div>",
                 unsafe_allow_html=True,
             )
             pc1, pc2, pc3, pc4 = st.columns([1.4, 1.3, 1.2, 3])
@@ -1198,7 +1207,7 @@ elif page == "Programación de aula":
             _pa_del = pc3.button("Borrar marcadas", use_container_width=True, key="pa_del")
             _pa_upd = pc4.button("Actualizar", use_container_width=True, type="primary", key="pa_upd")
 
-            _rc = recompute_actividades(_acts_sa, _pil_por_il)
+            _rc = recompute_actividades(_acts_sa_disp, _pil_por_il)
             _adf = pd.DataFrame(
                 [
                     {"X": False, "IL": r["IL"], "A": r["A"], "DA": r["DA"],
@@ -1244,11 +1253,20 @@ elif page == "Programación de aula":
             ]
             _delf = [str(r.get("X")).strip().lower() in ("true", "1", "yes") for _, r in _ag.iterrows()]
 
-            def _commit_acts(nuevas_sa):
-                ss.pa_acts = _acts_otras + [
-                    {"IL": r["IL"], "A": r["A"], "DA": r["DA"], "PA": r["PA"]}
-                    for r in recompute_actividades(nuevas_sa, _pil_por_il)
+            def _real(r):
+                return bool(str(r.get("DA") or "").strip()) or r.get("PA") not in (None, "", 0)
+
+            def _fold(pend):
+                return _acts_otras + [
+                    {"IL": p["IL"], "DA": p["DA"], "PA": p["PA"], "A": ""}
+                    for p in pend if str(p.get("IL") or "").strip() and _real(p)
                 ]
+
+            def _sig(rows):
+                return [(a.get("IL"), a.get("DA"), a.get("PA")) for a in rows]
+
+            def _commit_acts(nuevas_sa):
+                ss.pa_acts = _fold(nuevas_sa)
                 ss.pa_nonce += 1
                 ss.pop("prog_out", None)
                 ss.pop("pa_docx", None)
@@ -1256,10 +1274,17 @@ elif page == "Programación de aula":
 
             if _pa_add and _ils_sa:
                 _commit_acts(_pend + [{"IL": _add_il, "A": "", "DA": "", "PA": 1}])
-            if _pa_del and any(_delf):
+            elif _pa_del and any(_delf):
                 _commit_acts([p for p, d in zip(_pend, _delf) if not d])
-            if _pa_upd:
+            elif _pa_upd:
                 _commit_acts(_pend)
+            else:
+                # Guarda en vivo lo que se va escribiendo (sin remontar la rejilla).
+                _folded = _fold(_pend)
+                if _sig(_folded) != _sig(ss.pa_acts):
+                    ss.pa_acts = _folded
+                    ss.pop("prog_out", None)
+                    ss.pop("pa_docx", None)
 
             # Campos de la programación de aula para esta SA (columna de P_Aula_SA)
             _col = None
