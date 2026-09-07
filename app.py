@@ -12,41 +12,21 @@ sys.path.append(str(ROOT))
 
 
 def _favicon():
-    """Escudo (corona + blasón) de la Junta como icono de pestaña."""
-    fav = ROOT / "logo_favicon.png"
-    if fav.exists():
-        return str(fav)
-    logo = ROOT / "logo_junta.jpg"
-    if not logo.exists():
-        return "🗂️"
+    """Marca propia y neutra para el icono de pestaña (cuadrado redondeado en
+    los colores del tema). Sin escudos ni logotipos institucionales."""
     try:
         from PIL import Image, ImageDraw
 
-        e = Image.open(logo).convert("RGBA").crop((50, 8, 178, 212))
-        w, h = e.size
-        seeds = [(x, 0) for x in range(0, w, 6)] + [(x, h - 1) for x in range(0, w, 6)]
-        seeds += [(0, y) for y in range(0, h, 6)] + [(w - 1, y) for y in range(0, h, 6)]
-        for s in seeds:
-            try:
-                ImageDraw.floodfill(e, s, (255, 255, 255, 0), thresh=42)
-            except Exception:
-                pass
-        e = e.crop(e.getbbox())
-        side = max(e.size) + 8
-        square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
-        square.paste(e, ((side - e.width) // 2, (side - e.height) // 2), e)
-        return square.resize((128, 128), Image.LANCZOS)
+        img = Image.new("RGBA", (128, 128), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        d.rounded_rectangle((8, 8, 120, 120), radius=26, fill=(166, 24, 46, 255))
+        d.rounded_rectangle((30, 54, 98, 74), radius=10, fill=(224, 162, 28, 255))
+        return img
     except Exception:
-        return "🗂️"
+        return None
 
 
 st.set_page_config(page_title="IES Diseño", page_icon=_favicon(), layout="wide")
-
-if (ROOT / "logo_junta.jpg").exists():
-    try:
-        st.logo(str(ROOT / "logo_junta.jpg"))
-    except Exception:
-        pass
 
 # Aviso claro si se ha lanzado con el entorno equivocado (p. ej. el venv de otro
 # proyecto que VSCode dejó activo): faltarían dependencias.
@@ -70,7 +50,7 @@ if _faltan:
 st.markdown(
     """
     <style>
-    /* Paleta Junta de Castilla y León (del logo): rojo carmín + oro. */
+    /* Paleta del tema: rojo carmín + oro. */
     :root {
         --jcyl-red: #A6182E;
         --jcyl-red-2: #C01848;
