@@ -194,6 +194,48 @@ st.markdown(
     [class*="st-key-il_pick_box_"]:has(input:checked) {
         background: #dff2e2;
     }
+    /* Paneles flotantes de resumen del indicador (contenidos, transversales,
+       instrumento/agente/CC): etiquetas y tarjetas con el estilo del tema. */
+    [data-testid="stDialog"] > div {
+        border-top: 4px solid var(--jcyl-red);
+        border-radius: 12px;
+    }
+    .il-chip {
+        display: inline-block;
+        background: var(--jcyl-cream);
+        border: 1px solid var(--jcyl-line);
+        border-radius: 999px;
+        padding: 3px 11px;
+        margin: 2px 5px 2px 0;
+        font-size: 0.82rem;
+        line-height: 1.4;
+    }
+    .il-chip b { color: var(--jcyl-red); }
+    .il-info-card {
+        display: inline-block;
+        min-width: 150px;
+        background: #ffffff;
+        border: 1px solid var(--jcyl-line);
+        border-left: 4px solid var(--jcyl-gold);
+        border-radius: 10px;
+        padding: 6px 14px;
+        margin: 4px 10px 4px 0;
+    }
+    .il-info-card .lbl {
+        font-size: 0.7rem;
+        font-weight: 600;
+        opacity: 0.7;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .il-info-card .val { font-size: 0.98rem; font-weight: 650; color: var(--jcyl-ink); }
+    .il-dil-box {
+        background: var(--jcyl-cream);
+        border-radius: 10px;
+        padding: 8px 12px;
+        font-size: 0.92rem;
+        margin-bottom: 0.6rem;
+    }
     </style>
     <div class="topbar">
         <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.18em; opacity: 0.9; margin-bottom: 0.25rem;">Programación didáctica</div>
@@ -758,9 +800,9 @@ def _ajuste_pesos_ipf(il_rows, ce_list, ce_ced, ce_p, sits):
 
 def _abrir_dialogo_elementos(campo, titulo, row_idx, pending, items, *, cod_key="cod", desc_key="desc"):
     """Panel flotante para marcar con ticks (verde = marcado) los elementos
-    (contenidos o, más adelante, transversales) de un indicador de logro, en
-    vez de escribirlos a mano. Al cerrarlo —con el botón o con la X/Esc— se
-    escribe en `campo` la lista marcada, separada por «, »."""
+    (contenidos o transversales) de un indicador de logro, en vez de
+    escribirlos a mano. Al cerrarlo —con el botón o con la X/Esc— se escribe
+    en `campo` la lista marcada, separada por «, »."""
     ss = st.session_state
     if not (0 <= row_idx < len(pending)):
         ss.il_pick_dialog = None
@@ -783,13 +825,16 @@ def _abrir_dialogo_elementos(campo, titulo, row_idx, pending, items, *, cod_key=
         for it in items:
             st.session_state.pop(_key(it[cod_key]), None)
         ss.il_pick_dialog = None
+        ss.il_pick_seen = ""
 
     @st.dialog(titulo, width="large", on_dismiss=_cerrar)
     def _panel():
-        st.caption(
-            f"IL {fila.get('IL') or '(sin agrupar todavía)'} · CE {fila.get('CE') or '—'} "
-            "— marca lo que trabaja este indicador."
+        st.markdown(
+            f'<div class="mini-label">IL {fila.get("IL") or "(sin agrupar todavía)"} · '
+            f'CE {fila.get("CE") or "—"}</div>',
+            unsafe_allow_html=True,
         )
+        st.caption("Marca lo que trabaja este indicador; se colorea en verde al marcarlo.")
         cols = st.columns(2)
         for i, it in enumerate(items):
             cod, desc = it[cod_key], it.get(desc_key, "")
@@ -800,7 +845,104 @@ def _abrir_dialogo_elementos(campo, titulo, row_idx, pending, items, *, cod_key=
                         value=cod.replace(" ", "") in actuales,
                         key=_key(cod),
                     )
-        st.button("Cerrar", type="primary", use_container_width=True, on_click=_cerrar)
+        # Botón imperativo (no on_click): dentro de un st.dialog, on_click solo
+        # relanza el propio diálogo (como un fragment); hace falta un st.rerun()
+        # explícito (con scope="app") para que se cierre de verdad, igual que
+        # ya hace _dlg_coherencia.
+        if st.button("Cerrar", type="primary", use_container_width=True):
+            _cerrar()
+            st.rerun(scope="app")
+
+    _panel()
+
+
+def _describir_codigos(valor, items, cod_key="cod", desc_key="desc"):
+    """['1.1', '1.3'] -> [('1.1', 'desc...'), ('1.3', 'desc...')], en el orden
+    en que aparecen en `valor` (cadena separada por comas)."""
+    tokens = [t.strip().replace(" ", "") for t in str(valor or "").split(",") if t.strip()]
+    lookup = {str(it.get(cod_key, "")).replace(" ", ""): it.get(desc_key, "") for it in items}
+    return [(t, lookup.get(t, "")) for t in tokens]
+
+
+def _chip_html(cod, desc):
+    from html import escape as _esc
+
+    cola = f" — {_esc(desc)}" if desc else ""
+    return f'<span class="il-chip"><b>{_esc(str(cod))}</b>{cola}</span>'
+
+
+def _info_card_html(label, value):
+    from html import escape as _esc
+
+    return (
+        f'<div class="il-info-card"><div class="lbl">{_esc(label)}</div>'
+        f'<div class="val">{_esc(str(value)) if value else "—"}</div></div>'
+    )
+
+
+def _resumen_actividad_dialog(row_idx, pending, il_info, elementos):
+    """Panel flotante de solo lectura: al pulsar el IL de una actividad, un
+    resumen explícito de qué trabaja ese indicador (contenidos y transversales
+    descritos, instrumento de evaluación, agente evaluador, CC)."""
+    from html import escape as _esc
+
+    ss = st.session_state
+    if not (0 <= row_idx < len(pending)):
+        ss.pa_act_dialog = None
+        return
+    il = str(pending[row_idx].get("IL") or "")
+    info = il_info.get(il, {})
+    con_desc = _describir_codigos(info.get("CON"), elementos.get("contenidos", []), "cod")
+    ct_desc = _describir_codigos(info.get("CT"), elementos.get("transversales", []), "num")
+
+    def _cerrar():
+        ss.pa_act_dialog = None
+        ss.pa_pick_seen = ""
+        ss.pa_nonce = ss.get("pa_nonce", 0) + 1
+
+    @st.dialog(f"Resumen del indicador {il or '—'}", width="large", on_dismiss=_cerrar)
+    def _panel():
+        st.markdown(
+            f'<div class="mini-label">Criterio de evaluación</div>'
+            f'<div style="font-size:1.08rem;font-weight:700;color:var(--jcyl-ink)">'
+            f'CE {_esc(info.get("CE") or "—")}</div>'
+            f'<div style="opacity:.85;margin-bottom:.5rem">{_esc(info.get("CED") or "")}</div>',
+            unsafe_allow_html=True,
+        )
+        if info.get("DIL"):
+            st.markdown(f'<div class="il-dil-box">{_esc(info["DIL"])}</div>', unsafe_allow_html=True)
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown('<div class="mini-label">Contenidos (CON)</div>', unsafe_allow_html=True)
+            if con_desc:
+                st.markdown("".join(_chip_html(cod, desc) for cod, desc in con_desc), unsafe_allow_html=True)
+            else:
+                st.caption("Sin contenidos asignados.")
+        with c2:
+            st.markdown('<div class="mini-label">Transversales (CT)</div>', unsafe_allow_html=True)
+            if ct_desc:
+                st.markdown("".join(_chip_html(cod, desc) for cod, desc in ct_desc), unsafe_allow_html=True)
+            else:
+                st.caption("Sin transversales asignados.")
+
+        st.markdown('<div style="height:.9rem"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="mini-label">Evaluación</div>', unsafe_allow_html=True)
+        st.markdown(
+            _info_card_html("Instrumento de evaluación", info.get("IE"))
+            + _info_card_html("Agente evaluador", info.get("AE"))
+            + _info_card_html("CC", info.get("CC")),
+            unsafe_allow_html=True,
+        )
+
+        st.markdown('<div style="height:.9rem"></div>', unsafe_allow_html=True)
+        # Botón imperativo (no on_click) + st.rerun(scope="app"): dentro de un
+        # st.dialog un widget interno solo relanza el propio diálogo (es un
+        # fragment); hace falta forzar el rerun completo para que cierre de
+        # verdad, igual que _dlg_coherencia.
+        if st.button("Cerrar", type="primary", use_container_width=True):
+            _cerrar()
+            st.rerun(scope="app")
 
     _panel()
 
@@ -1419,18 +1561,23 @@ elif page == "Diseño de la programación":
             )
             gb.configure_column("DIL", width=240, tooltipField="DIL")
             gb.configure_column("DO", width=180, tooltipField="DO")
+            _pick_cell_style = JsCode(
+                "function(p){return {cursor:'pointer', textDecoration:'underline'}}"
+            )
+            _pick_on_click = JsCode(
+                "function(p){ p.node.setDataValue("
+                "'_pick', p.colDef.field + '|' + String(p.rowIndex) + '|' + Date.now()); }"
+            )
             gb.configure_column(
                 "CON", width=130, editable=False, tooltipField="CON",
                 headerTooltip="Pulsa una celda para marcar los contenidos con ticks",
-                cellStyle=JsCode(
-                    "function(p){return {cursor:'pointer', textDecoration:'underline'}}"
-                ),
-                onCellClicked=JsCode(
-                    "function(p){ p.node.setDataValue("
-                    "'_pick', String(p.rowIndex) + '|' + Date.now()); }"
-                ),
+                cellStyle=_pick_cell_style, onCellClicked=_pick_on_click,
             )
-            gb.configure_column("CT", width=80, tooltipField="CT")
+            gb.configure_column(
+                "CT", width=80, editable=False, tooltipField="CT",
+                headerTooltip="Pulsa una celda para marcar los elementos transversales con ticks",
+                cellStyle=_pick_cell_style, onCellClicked=_pick_on_click,
+            )
             gb.configure_column("IE", width=140, cellEditor="agSelectCellEditor",
                                 cellEditorParams={"values": _with_existing(aux.get("IE", []), "IE")})
             gb.configure_column("CC", width=130, cellEditor="agSelectCellEditor",
@@ -1470,23 +1617,33 @@ elif page == "Diseño de la programación":
             # ya recalculado: con IL/CED/PIL% rellenos.
             st.session_state.il_pending = il_recompute(pending, ce_ced, ce_list)
 
-            # Clic en la celda CON: abre el panel flotante de contenidos para esa fila
-            # (marca «_pick» vía onCellClicked, se detecta aquí como cualquier otra
-            # edición de la rejilla).
+            # Clic en la celda CON o CT: abre el panel flotante de esa lista para
+            # esa fila (marca «_pick» vía onCellClicked, se detecta aquí como
+            # cualquier otra edición de la rejilla).
             if "_pick" in grid_df.columns:
                 for _pi, _mark in enumerate(grid_df["_pick"].tolist()):
                     _mark = "" if pd.isna(_mark) else str(_mark)
                     if _mark and _mark != st.session_state.get("il_pick_seen"):
                         st.session_state.il_pick_seen = _mark
-                        st.session_state.il_pick_dialog = {"campo": "CON", "row_idx": _pi}
+                        _campo_click = _mark.split("|", 1)[0]
+                        if _campo_click not in ("CON", "CT"):
+                            _campo_click = "CON"
+                        st.session_state.il_pick_dialog = {"campo": _campo_click, "row_idx": _pi}
                         break
 
+            _PICK_CONFIG = {
+                "CON": ("contenidos", "cod", "Contenidos de la materia (CON)"),
+                "CT": ("transversales", "num", "Elementos transversales (CT)"),
+            }
             if st.session_state.get("il_pick_dialog"):
                 _pd_info = st.session_state.il_pick_dialog
-                _pd_items = st.session_state.get("elementos", {}).get("contenidos", [])
+                _el_key, _cod_key, _pd_titulo = _PICK_CONFIG.get(
+                    _pd_info["campo"], _PICK_CONFIG["CON"]
+                )
+                _pd_items = st.session_state.get("elementos", {}).get(_el_key, [])
                 _abrir_dialogo_elementos(
-                    _pd_info["campo"], "Contenidos de la materia (CON)",
-                    _pd_info["row_idx"], pending, _pd_items,
+                    _pd_info["campo"], _pd_titulo, _pd_info["row_idx"], pending, _pd_items,
+                    cod_key=_cod_key,
                 )
 
             def _truthy(v):
@@ -1925,15 +2082,20 @@ elif page == "Programación de aula":
             _pa_upd = pc4.button("Actualizar", use_container_width=True, type="primary", key="pa_upd")
 
             _rc = recompute_actividades(_acts_sa_disp, _pil_por_il)
+            _il_info = {r["IL"]: r for r in _il_state}
             _adf = pd.DataFrame(
                 [
                     {"X": False, "IL": r["IL"], "A": r["A"], "DA": r["DA"],
                      "PA": r["PA"],
                      "PA%": None if r["PA%"] is None else r["PA%"] * 100,
-                     "FACTOR": r["FACTOR"]}
+                     "FACTOR": r["FACTOR"],
+                     "IE": _il_info.get(r["IL"], {}).get("IE", ""),
+                     "_DIL": _il_info.get(r["IL"], {}).get("DIL", ""),
+                     "_pick": "",  # aviso de clic en IL (resumen del indicador)
+                     }
                     for r in _rc
                 ],
-                columns=["X", "IL", "A", "DA", "PA", "PA%", "FACTOR"],
+                columns=["X", "IL", "A", "DA", "PA", "PA%", "FACTOR", "IE", "_DIL", "_pick"],
             )
             _adf["X"] = _adf["X"].astype(bool)
             _agb = GridOptionsBuilder.from_dataframe(_adf)
@@ -1941,8 +2103,25 @@ elif page == "Programación de aula":
             _agb.configure_column("X", headerName="", width=44, pinned="left",
                                   cellRenderer="agCheckboxCellRenderer",
                                   cellEditor="agCheckboxCellEditor", cellDataType="boolean")
-            _agb.configure_column("IL", width=84, cellDataType="text", cellEditor="agSelectCellEditor",
-                                  cellEditorParams={"values": _ils_sa})
+            _agb.configure_column(
+                "IL", width=84, cellDataType="text", cellEditor="agSelectCellEditor",
+                cellEditorParams={"values": _ils_sa},
+                headerTooltip="Un clic: resumen del indicador · doble clic: cambiar de IL",
+                tooltipValueGetter=JsCode(
+                    "function(p){return (p.data && p.data._DIL) ? p.data._DIL : '';}"
+                ),
+                onCellClicked=JsCode(
+                    # Un solo clic abre el resumen; si llega un segundo clic enseguida
+                    # (doble clic para reasignar el IL), se cancela y no se abre nada.
+                    "function(p){"
+                    "if (p.node.__dlgTimer) { clearTimeout(p.node.__dlgTimer); p.node.__dlgTimer = null; return; }"
+                    "p.node.__dlgTimer = setTimeout(function(){"
+                    "p.node.__dlgTimer = null;"
+                    "p.node.setDataValue('_pick', String(p.rowIndex) + '|' + Date.now());"
+                    "}, 280);"
+                    "}"
+                ),
+            )
             _agb.configure_column("A", editable=False, width=96)
             _agb.configure_column("DA", headerName="Descripción", flex=1, minWidth=240,
                                   cellDataType="text", tooltipField="DA")
@@ -1951,6 +2130,9 @@ elif page == "Programación de aula":
                                   valueFormatter=JsCode("function(p){return p.value==null?'':Number(p.value).toFixed(1)+' %'}"))
             _agb.configure_column("FACTOR", editable=False, width=90,
                                   valueFormatter=JsCode("function(p){return p.value==null?'':Number(p.value).toFixed(3)}"))
+            _agb.configure_column("IE", editable=False, width=140, tooltipField="IE")
+            _agb.configure_column("_DIL", hide=True)
+            _agb.configure_column("_pick", hide=True)
             _agb.configure_grid_options(enableBrowserTooltips=True, rowHeight=30)
             _agrid = AgGrid(
                 _adf, gridOptions=_agb.build(), update_on=[("cellValueChanged", 300)],
@@ -1972,6 +2154,23 @@ elif page == "Programación de aula":
                 for _, r in _ag.iterrows()
             ]
             _delf = [str(r.get("X")).strip().lower() in ("true", "1", "yes") for _, r in _ag.iterrows()]
+
+            # Clic en la celda IL: abre el resumen explícito del indicador
+            # (contenidos y transversales descritos, instrumento, agente
+            # evaluador, CC). Mismo mecanismo que el panel de tics de CON/CT.
+            if "_pick" in _ag.columns:
+                for _pi, _mark in enumerate(_ag["_pick"].tolist()):
+                    _mark = "" if pd.isna(_mark) else str(_mark)
+                    if _mark and _mark != ss.get("pa_pick_seen"):
+                        ss.pa_pick_seen = _mark
+                        ss.pa_act_dialog = {"row_idx": _pi}
+                        break
+
+            if ss.get("pa_act_dialog"):
+                _resumen_actividad_dialog(
+                    ss.pa_act_dialog["row_idx"], _pend, _il_info,
+                    ss.get("elementos", {}),
+                )
 
             def _real(r):
                 return bool(str(r.get("DA") or "").strip()) or r.get("PA") not in (None, "", 0)
