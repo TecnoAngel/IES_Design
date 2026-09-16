@@ -185,6 +185,15 @@ st.markdown(
         background: var(--jcyl-red) !important;
         color: #fff !important;
     }
+    /* Panel de tics (CON/CT del indicador): se colorea en verde al marcar. */
+    [class*="st-key-il_pick_box_"] {
+        padding: 2px 6px;
+        border-radius: 8px;
+        transition: background-color 0.1s ease;
+    }
+    [class*="st-key-il_pick_box_"]:has(input:checked) {
+        background: #dff2e2;
+    }
     </style>
     <div class="topbar">
         <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.18em; opacity: 0.9; margin-bottom: 0.25rem;">Programación didáctica</div>
@@ -745,6 +754,55 @@ def _ajuste_pesos_ipf(il_rows, ce_list, ce_ced, ce_p, sits):
     if b3.button("Cargar solo PIL", use_container_width=True,
                  disabled=not suma_ok, key="ipf_pil"):
         _ipf_cargar(None, pil, ce_ced, ce_list)
+
+
+def _abrir_dialogo_elementos(campo, titulo, row_idx, pending, items, *, cod_key="cod", desc_key="desc"):
+    """Panel flotante para marcar con ticks (verde = marcado) los elementos
+    (contenidos o, más adelante, transversales) de un indicador de logro, en
+    vez de escribirlos a mano. Al cerrarlo —con el botón o con la X/Esc— se
+    escribe en `campo` la lista marcada, separada por «, »."""
+    ss = st.session_state
+    if not (0 <= row_idx < len(pending)):
+        ss.il_pick_dialog = None
+        return
+    fila = pending[row_idx]
+    actuales = {
+        t.strip().replace(" ", "")
+        for t in str(fila.get(campo) or "").split(",")
+        if t.strip()
+    }
+    _key = lambda cod: f"il_pick_{campo}_{row_idx}_{cod}"
+
+    def _cerrar():
+        seleccion = [it[cod_key] for it in items if st.session_state.get(_key(it[cod_key]))]
+        nuevos = list(pending)
+        nuevos[row_idx] = dict(nuevos[row_idx], **{campo: ", ".join(seleccion)})
+        st.session_state.il_rows = il_recompute(nuevos, ss.il_ce_ced, ss.il_ce_list)
+        st.session_state.il_nonce = st.session_state.get("il_nonce", 0) + 1
+        st.session_state.pop("prog_out", None)
+        for it in items:
+            st.session_state.pop(_key(it[cod_key]), None)
+        ss.il_pick_dialog = None
+
+    @st.dialog(titulo, width="large", on_dismiss=_cerrar)
+    def _panel():
+        st.caption(
+            f"IL {fila.get('IL') or '(sin agrupar todavía)'} · CE {fila.get('CE') or '—'} "
+            "— marca lo que trabaja este indicador."
+        )
+        cols = st.columns(2)
+        for i, it in enumerate(items):
+            cod, desc = it[cod_key], it.get(desc_key, "")
+            with cols[i % 2]:
+                with st.container(key=f"il_pick_box_{campo}_{row_idx}_{i}"):
+                    st.checkbox(
+                        f"{cod} — {desc}" if desc else cod,
+                        value=cod.replace(" ", "") in actuales,
+                        key=_key(cod),
+                    )
+        st.button("Cerrar", type="primary", use_container_width=True, on_click=_cerrar)
+
+    _panel()
 
 
 def _aplicar_regeneracion(issues):
@@ -1322,11 +1380,12 @@ elif page == "Diseño de la programación":
                         "IE": r["IE"], "CC": r["CC"], "AE": r["AE"],
                         "SA": "" if r["SA"] in (None, "") else str(r["SA"]),
                         "__shade": False,  # se calcula justo debajo
+                        "_pick": "",  # aviso de clic en CON (ver onCellClicked)
                     }
                     for r in st.session_state.il_rows
                 ],
                 columns=["X", "CE", "CED", "IL", "PIL", "PIL%", "DIL", "DO",
-                         "CON", "CT", "IE", "CC", "AE", "SA", "__shade"],
+                         "CON", "CT", "IE", "CC", "AE", "SA", "__shade", "_pick"],
             )
             _ce_seq = list(dict.fromkeys(r["CE"] for r in st.session_state.il_rows))
             _ce_shade = {ce: (i % 2 == 1) for i, ce in enumerate(_ce_seq)}
@@ -1336,6 +1395,7 @@ elif page == "Diseño de la programación":
             gb = GridOptionsBuilder.from_dataframe(il_df)
             gb.configure_default_column(editable=True, resizable=True, sortable=False, filter=False)
             gb.configure_column("__shade", hide=True)
+            gb.configure_column("_pick", hide=True)
             gb.configure_column(
                 "X", headerName="", editable=True, width=44, pinned="left",
                 cellRenderer="agCheckboxCellRenderer", cellEditor="agCheckboxCellEditor",
@@ -1359,7 +1419,17 @@ elif page == "Diseño de la programación":
             )
             gb.configure_column("DIL", width=240, tooltipField="DIL")
             gb.configure_column("DO", width=180, tooltipField="DO")
-            gb.configure_column("CON", width=130, tooltipField="CON")
+            gb.configure_column(
+                "CON", width=130, editable=False, tooltipField="CON",
+                headerTooltip="Pulsa una celda para marcar los contenidos con ticks",
+                cellStyle=JsCode(
+                    "function(p){return {cursor:'pointer', textDecoration:'underline'}}"
+                ),
+                onCellClicked=JsCode(
+                    "function(p){ p.node.setDataValue("
+                    "'_pick', String(p.rowIndex) + '|' + Date.now()); }"
+                ),
+            )
             gb.configure_column("CT", width=80, tooltipField="CT")
             gb.configure_column("IE", width=140, cellEditor="agSelectCellEditor",
                                 cellEditorParams={"values": _with_existing(aux.get("IE", []), "IE")})
@@ -1399,6 +1469,25 @@ elif page == "Diseño de la programación":
             # para consumidores externos (Elementos, Programación de aula) se guarda
             # ya recalculado: con IL/CED/PIL% rellenos.
             st.session_state.il_pending = il_recompute(pending, ce_ced, ce_list)
+
+            # Clic en la celda CON: abre el panel flotante de contenidos para esa fila
+            # (marca «_pick» vía onCellClicked, se detecta aquí como cualquier otra
+            # edición de la rejilla).
+            if "_pick" in grid_df.columns:
+                for _pi, _mark in enumerate(grid_df["_pick"].tolist()):
+                    _mark = "" if pd.isna(_mark) else str(_mark)
+                    if _mark and _mark != st.session_state.get("il_pick_seen"):
+                        st.session_state.il_pick_seen = _mark
+                        st.session_state.il_pick_dialog = {"campo": "CON", "row_idx": _pi}
+                        break
+
+            if st.session_state.get("il_pick_dialog"):
+                _pd_info = st.session_state.il_pick_dialog
+                _pd_items = st.session_state.get("elementos", {}).get("contenidos", [])
+                _abrir_dialogo_elementos(
+                    _pd_info["campo"], "Contenidos de la materia (CON)",
+                    _pd_info["row_idx"], pending, _pd_items,
+                )
 
             def _truthy(v):
                 return str(v).strip().lower() in ("true", "1", "yes", "x")
