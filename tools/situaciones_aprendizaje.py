@@ -20,13 +20,19 @@ Estructura de la hoja:
   ``ACUMULADO`` (``=SUMIF(tablaSAprendizaje[EV];Gn;tablaSAprendizaje[HSA])``) y
   ``DESVIACIÓN`` (``=Hn-In``), con formato condicional que pinta la desviación
   de rojo si es negativa (te has pasado de horas) y de verde si es >= 0.
+* Celdas sueltas en la fila 2, junto al resumen: ``L2:Q2`` las fechas de
+  inicio/fin de cada evaluación, ``R2:V2`` las sesiones de la materia por
+  día de la semana (lunes..viernes) y ``W2`` el festivo local, todo de la
+  calculadora de sesiones por evaluación (para no tener que volver a
+  pensarlas cada vez que se abre el Excel).
 """
 
 from __future__ import annotations
 
 import re
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date, datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -43,6 +49,27 @@ RESUMEN_FIRST_ROW = 2
 RESUMEN_LAST_ROW = 4
 TRIMESTRES = (1, 2, 3)
 
+# Fechas de cada evaluación, fila 2, sueltas junto al resumen: L=inicio 1ª,
+# M=fin 1ª, N=inicio 2ª, O=fin 2ª, P=inicio 3ª, Q=fin 3ª. Cabeceras en fila 1
+# (se crean solas si el Excel no las tenía todavía).
+FECHAS_ROW = 2
+TRIMESTRE_FECHAS_COLS = {1: ("L", "M"), 2: ("N", "O"), 3: ("P", "Q")}
+FECHAS_HEADERS = {
+    "L": "Comienzo 1ª Ev", "M": "Fin 1ª Ev",
+    "N": "Comienzo 2ª Ev", "O": "Fin 2ª Ev",
+    "P": "Comienzo 3ª Ev", "Q": "Fin 3ª Ev",
+}
+
+# Sesiones de la materia por día de la semana (L-V) y fecha del festivo local
+# de la calculadora de sesiones, misma fila, columnas R..W (mismo criterio:
+# cabeceras en fila 1, se crean solas si el Excel no las tenía).
+HORAS_DIA_COLS = ["R", "S", "T", "U", "V"]  # Lunes..Viernes, orden de DIAS_SEMANA
+FESTIVO_LOCAL_COL = "W"
+CONFIG_HEADERS = {
+    "R": "Horas Lunes", "S": "Horas Martes", "T": "Horas Miércoles",
+    "U": "Horas Jueves", "V": "Horas Viernes", "W": "Festivo local",
+}
+
 
 @dataclass
 class Situacion:
@@ -56,6 +83,9 @@ class Situacion:
 class SituacionesData:
     situaciones: list[Situacion]
     horas_previstas: dict[int, float]  # {trimestre: horas}
+    fechas_trimestre: dict[int, tuple[date | None, date | None]] = field(default_factory=dict)
+    horas_dia: list[int | float | None] = field(default_factory=lambda: [None] * 5)  # Lunes..Viernes
+    festivo_local: date | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +116,24 @@ def _num(value: Any) -> float | None:
 
 def _num_xml(value: float) -> str:
     return str(int(value)) if float(value).is_integer() else repr(float(value))
+
+
+def _parse_fecha(value: Any) -> date | None:
+    """Admite una fecha real de Excel (si el profesor la escribió a mano) o el
+    texto «DD/MM/AAAA» (formato en el que la guarda la app)."""
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +193,23 @@ def read_situaciones(source: Any) -> SituacionesData:
     for tri in TRIMESTRES:
         horas_previstas.setdefault(tri, 0.0)
 
-    return SituacionesData(situaciones=situaciones, horas_previstas=horas_previstas)
+    # Fechas de cada evaluación, fila 2, columnas L..Q (ver TRIMESTRE_FECHAS_COLS).
+    fechas_trimestre: dict[int, tuple[date | None, date | None]] = {}
+    for tri, (col_ini, col_fin) in TRIMESTRE_FECHAS_COLS.items():
+        ini = _parse_fecha(ws[f"{col_ini}{FECHAS_ROW}"].value)
+        fin = _parse_fecha(ws[f"{col_fin}{FECHAS_ROW}"].value)
+        fechas_trimestre[tri] = (ini, fin)
+
+    # Horas por día de la semana y festivo local de la calculadora de
+    # sesiones, misma fila, columnas R..W (ver HORAS_DIA_COLS/FESTIVO_LOCAL_COL).
+    horas_dia = [_num(ws[f"{col}{FECHAS_ROW}"].value) for col in HORAS_DIA_COLS]
+    festivo_local = _parse_fecha(ws[f"{FESTIVO_LOCAL_COL}{FECHAS_ROW}"].value)
+
+    return SituacionesData(
+        situaciones=situaciones, horas_previstas=horas_previstas,
+        fechas_trimestre=fechas_trimestre,
+        horas_dia=horas_dia, festivo_local=festivo_local,
+    )
 
 
 def acumulado_por_trimestre(situaciones: list[Situacion]) -> dict[int, float]:
@@ -209,10 +273,51 @@ def _build_data_cells(row_num: int, s: Situacion) -> str:
     return "".join(cells)
 
 
+def _text_cell(ref: str, text: Any) -> str:
+    if text in (None, ""):
+        return ""
+    return (
+        f'<c r="{ref}" t="inlineStr"><is><t xml:space="preserve">'
+        f"{escape(str(text))}</t></is></c>"
+    )
+
+
+def _fecha_cell(ref: str, d: date | None) -> str:
+    return _text_cell(ref, d.strftime("%d/%m/%Y") if d else None)
+
+
+def _num_cell(ref: str, value: Any) -> str:
+    if value is None or value == "":
+        return ""
+    return f'<c r="{ref}"><v>{_num_xml(float(value))}</v></c>'
+
+
+def _strip_cols(row_xml: str, cols: set[str]) -> str:
+    """Quita de una fila (XML) las celdas de las columnas indicadas."""
+
+    def _keep(m: re.Match) -> str:
+        ref = re.search(r'r="([A-Z]+)\d+"', m.group(0)).group(1)
+        return "" if ref in cols else m.group(0)
+
+    return re.sub(r"<c [^>]*?/>|<c [^>]*?>.*?</c>", _keep, row_xml, flags=re.S)
+
+
+def _append_cells(row_xml: str, cells_xml: str) -> str:
+    """Añade celdas al final de una fila (XML), en forma abierta o autocerrada."""
+    if not cells_xml:
+        return row_xml
+    if row_xml.rstrip().endswith("/>"):
+        return re.sub(r"/>\s*$", f">{cells_xml}</row>", row_xml)
+    return re.sub(r"</row>\s*$", f"{cells_xml}</row>", row_xml)
+
+
 def _rewrite_sheet_xml(
     sheet_xml: str,
     situaciones: list[Situacion],
     horas_previstas: dict[int, float],
+    fechas_trimestre: dict[int, tuple[date | None, date | None]] | None = None,
+    horas_dia: list[Any] | None = None,
+    festivo_local: date | None = None,
 ) -> str:
     sd = re.search(r"<sheetData>(.*)</sheetData>", sheet_xml, re.S)
     if not sd:
@@ -227,6 +332,20 @@ def _rewrite_sheet_xml(
     header_row = row_by_num.get(1)
     if header_row is None:
         raise ValueError("La hoja de situaciones no tiene fila de cabecera.")
+
+    fechas_trimestre = fechas_trimestre or {}
+    if fechas_trimestre:
+        # Cabeceras L1:Q1 (se crean o se reescriben, da igual: son fijas).
+        header_row = _strip_cols(header_row, set(FECHAS_HEADERS))
+        header_cells = "".join(_text_cell(f"{col}1", label) for col, label in FECHAS_HEADERS.items())
+        header_row = _append_cells(header_row, header_cells)
+
+    config_activa = horas_dia is not None or festivo_local is not None
+    if config_activa:
+        # Cabeceras R1:W1 (horas por día + festivo local), igual criterio.
+        header_row = _strip_cols(header_row, set(CONFIG_HEADERS))
+        header_cells = "".join(_text_cell(f"{col}1", label) for col, label in CONFIG_HEADERS.items())
+        header_row = _append_cells(header_row, header_cells)
 
     # Celdas no pertenecientes a la tabla (columnas E..J): el bloque resumen G:J.
     extras_by_row: dict[int, str] = {}
@@ -259,6 +378,29 @@ def _rewrite_sheet_xml(
                 extras_by_row[rn],
             )
 
+    # Fechas de cada evaluación (fila 2, L..Q): se pisan siempre con lo que
+    # haya en `fechas_trimestre` (mismo criterio que HORAS PREVISTAS).
+    if fechas_trimestre:
+        rn = FECHAS_ROW
+        cells = "".join(
+            _fecha_cell(f"{col}{rn}", d)
+            for tri, (col_ini, col_fin) in TRIMESTRE_FECHAS_COLS.items()
+            for col, d in (
+                (col_ini, fechas_trimestre.get(tri, (None, None))[0]),
+                (col_fin, fechas_trimestre.get(tri, (None, None))[1]),
+            )
+        )
+        extras_by_row[rn] = _strip_cols(extras_by_row.get(rn, ""), set(FECHAS_HEADERS)) + cells
+
+    # Horas por día de la semana y festivo local (fila 2, R..W): se pisan
+    # siempre con lo que haya, mismo criterio que las fechas de evaluación.
+    if config_activa:
+        rn = FECHAS_ROW
+        hd = horas_dia if horas_dia is not None else [None] * 5
+        cells = "".join(_num_cell(f"{col}{rn}", v) for col, v in zip(HORAS_DIA_COLS, hd))
+        cells += _fecha_cell(f"{FESTIVO_LOCAL_COL}{rn}", festivo_local)
+        extras_by_row[rn] = _strip_cols(extras_by_row.get(rn, ""), set(CONFIG_HEADERS)) + cells
+
     n = len(situaciones)
     last_row = max(n + 1, RESUMEN_LAST_ROW)
 
@@ -275,8 +417,9 @@ def _rewrite_sheet_xml(
         + "<sheetData>" + "".join(new_rows) + "</sheetData>"
         + sheet_xml[sd.end():]
     )
+    ultima_col = "W" if config_activa else ("Q" if fechas_trimestre else "J")
     sheet_xml = re.sub(
-        r'<dimension ref="[^"]*"/>', f'<dimension ref="A1:J{last_row}"/>', sheet_xml
+        r'<dimension ref="[^"]*"/>', f'<dimension ref="A1:{ultima_col}{last_row}"/>', sheet_xml
     )
     return sheet_xml
 
@@ -300,9 +443,15 @@ def save_situaciones(
     source: Any,
     situaciones: list[Situacion],
     horas_previstas: dict[int, float] | None = None,
+    fechas_trimestre: dict[int, tuple[date | None, date | None]] | None = None,
+    horas_dia: list[Any] | None = None,
+    festivo_local: date | None = None,
 ) -> bytes:
     """Devuelve los bytes de un .xlsx idéntico al original salvo la tabla
-    `tablaSAprendizaje` (y las HORAS PREVISTAS del bloque resumen)."""
+    `tablaSAprendizaje` (las HORAS PREVISTAS del bloque resumen; si se pasan,
+    las fechas de cada evaluación en L2:Q2 —ver TRIMESTRE_FECHAS_COLS— y la
+    configuración de la calculadora de sesiones en R2:W2 —horas por día de la
+    semana y festivo local, ver HORAS_DIA_COLS/FESTIVO_LOCAL_COL—)."""
     payload = _read_source_bytes(source)
     situaciones = [s for s in situaciones if not _is_empty(s)]
     horas_previstas = horas_previstas or {}
@@ -312,7 +461,8 @@ def save_situaciones(
     table_path = _find_table_path(src)
 
     new_sheet = _rewrite_sheet_xml(
-        src.read(sheet_path).decode("utf-8"), situaciones, horas_previstas
+        src.read(sheet_path).decode("utf-8"), situaciones, horas_previstas, fechas_trimestre,
+        horas_dia, festivo_local,
     )
     new_workbook = _force_full_recalc(src.read("xl/workbook.xml").decode("utf-8"))
     new_table = (

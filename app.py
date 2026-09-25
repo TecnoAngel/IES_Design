@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -365,6 +366,9 @@ if prog_excel is not None and st.session_state.get("prog_loaded_name") != prog_e
         st.session_state.sa_previstas = {
             t: float(_sa.horas_previstas.get(t, 0.0)) for t in TRIMESTRES
         }
+        st.session_state.sa_fechas_trimestre = dict(_sa.fechas_trimestre)
+        st.session_state.sa_horas_dia = list(_sa.horas_dia)
+        st.session_state.sa_festivo_local = _sa.festivo_local
         _il = read_indicadores(prog_excel)
         st.session_state.il_rows = il_recompute(_il["rows"], _il["ce_ced"], _il["ce_list"])
         st.session_state.il_ce_list = _il["ce_list"]
@@ -392,10 +396,14 @@ if prog_excel is not None and st.session_state.get("prog_loaded_name") != prog_e
             "pa_docx", "consist_seen",
         ):
             st.session_state.pop(_k, None)
-
-        from tools.consistencia import revisar as _revisar
-
-        st.session_state.consist_issues = _revisar(*_estado_coherencia())
+        # ...y las fechas/horas por día/festivo local que hubiera tecleado en
+        # la calculadora de sesiones (se recargan las guardadas en este
+        # Excel, o se vuelve a proponer el reparto automático si no tiene).
+        for _k in [
+            k for k in list(st.session_state.keys())
+            if k.startswith("ses_tr") or k.startswith("ses_d") or k in ("ses_loc", "ses_loc_on")
+        ]:
+            st.session_state.pop(_k, None)
     except Exception as exc:
         st.error(f"No se ha podido leer el Excel: {exc}")
 
@@ -420,7 +428,29 @@ def _guardar_todo() -> bytes:
             t: float(ss.get(f"sa_prev_{t}", ss.get("sa_previstas", {}).get(t, 0.0)))
             for t in TRIMESTRES
         }
-        data = save_situaciones(_B(data), sits_g, prev_g)
+        # Fechas de cada evaluación (calculadora de sesiones): lo que haya en
+        # los selectores si se ha abierto esa calculadora en esta sesión, si no
+        # lo que ya hubiera guardado el Excel (para no borrarlo sin querer).
+        _fechas_prev = ss.get("sa_fechas_trimestre", {})
+        fechas_g = {
+            t: (
+                ss.get(f"ses_tr{t - 1}a", _fechas_prev.get(t, (None, None))[0]),
+                ss.get(f"ses_tr{t - 1}b", _fechas_prev.get(t, (None, None))[1]),
+            )
+            for t in TRIMESTRES
+        }
+        # Horas por día y festivo local: mismo criterio — lo tecleado esta
+        # sesión si se abrió la calculadora, si no lo que ya hubiera guardado
+        # el Excel. El festivo se limpia explícitamente si se desmarca la
+        # casilla (a diferencia de las horas, que no tienen "sin valor").
+        _horas_prev = ss.get("sa_horas_dia") or [None] * 5
+        horas_dia_g = [ss.get(f"ses_d{i}", _horas_prev[i]) for i in range(5)]
+        festivo_local_g = (
+            (ss.get("ses_loc") if ss.get("ses_loc_on") else None)
+            if "ses_loc_on" in ss
+            else ss.get("sa_festivo_local")
+        )
+        data = save_situaciones(_B(data), sits_g, prev_g, fechas_g, horas_dia_g, festivo_local_g)
 
     il_g = il_recompute(
         ss.get("il_pending", ss.get("il_rows", [])), ss.il_ce_ced, ss.il_ce_list
@@ -452,6 +482,143 @@ def _guardar_todo() -> bytes:
 
     data, ss.prog_sello = sellar(data)
     return data
+
+
+def _invalidar_prog_out() -> None:
+    """Fuerza a que el próximo render recalcule el Excel (ver dl_box): lo usan
+    como `on_change` los campos de la calculadora de sesiones (horas por día,
+    fechas de evaluación, festivo local) porque, al ser simples widgets sin
+    un botón «Actualizar» propio, nada más los invalidaría — y con el cálculo
+    ahora automático (sin botón intermedio, ver dl_box) un valor tecleado ahí
+    se quedaría sin guardar hasta la próxima edición en otro sitio."""
+    st.session_state.pop("prog_out", None)
+
+
+def _nombre_sin_sello(nombre: str) -> str:
+    """Quita del principio de un nombre de archivo el/los «AAAAMMDD_HHMM_» que
+    le hubiera puesto una descarga anterior de esta app (uno o varios, por si
+    el nombre ya venía con más de uno acumulado), para que un guardado
+    repetido sobre el mismo archivo no siga acumulando sellos."""
+    return re.sub(r"^(?:\d{8}_\d{4}_)+", "", nombre)
+
+
+def _guardar_excel_html(data: bytes, base: str, *, height: int = 74) -> None:
+    """Un único botón «Guardar Excel»: si el navegador soporta elegir dónde
+    guardar (Chrome/Edge, la File System Access API) abre el explorador de
+    archivos del sistema para que lo guardes donde quieras, incluso
+    sobrescribiendo el original; si no (Firefox, Safari…) hace una descarga
+    normal a la carpeta de Descargas. Todo en el mismo botón, decidido por JS
+    con un `if` — nada que configurar ni detectar desde Python.
+
+    Va en HTML/JS puro (un `st.button` no sirve: la API de guardar exige un
+    gesto de usuario síncrono en el propio DOM). No recuerda el archivo entre
+    guardados —eso fue lo que se quedaba colgado en un intento anterior—: cada
+    clic vuelve a preguntar dónde. Los pasos de escritura llevan un tiempo
+    límite por si acaso; el propio diálogo de elegir archivo no (ahí esperar a
+    que decidas es normal, no un cuelgue).
+
+    El botón se pinta una sola vez (mientras no cambien los datos) y luego se
+    puede pulsar varias veces sin que Streamlit vuelva a ejecutar Python —por
+    eso el sello de fecha/hora del NOMBRE se calcula aquí, en JS, en el propio
+    instante del clic (`base` ya viene sin sellos previos); así cada guardado
+    propone un nombre con la hora real de ese guardado, no la de cuando se
+    generó el Excel. El sello oculto DENTRO del archivo (para Power Pivot) es
+    otra cosa y sigue siendo el de la última vez que se generó el Excel."""
+    import base64
+    import json
+
+    payload = json.dumps({"b64": base64.b64encode(data).decode("ascii"), "base": base})
+    components.html(
+        f"""
+        <style>
+        .ies-save-btn {{
+            width: 100%; padding: 0.5rem 1rem; border-radius: 8px; border: none;
+            background: #A6182E; color: #fff; font-weight: 600; font-size: 0.95rem;
+            font-family: "Source Sans Pro", sans-serif; cursor: pointer;
+        }}
+        .ies-save-btn:hover:not(:disabled) {{ background: #8f1427; }}
+        .ies-save-btn:disabled {{ background: #d8cec6; color: #7a6f66; cursor: not-allowed; }}
+        .ies-save-msg {{ font-size: 0.78rem; margin-top: 4px; text-align: center; min-height: 1em; }}
+        </style>
+        <button id="iesSaveBtn" class="ies-save-btn">Guardar Excel</button>
+        <div id="iesSaveMsg" class="ies-save-msg"></div>
+        <script>
+        (function () {{
+            const datos = {payload};
+            const btn = document.getElementById("iesSaveBtn");
+            const msg = document.getElementById("iesSaveMsg");
+
+            function conTiempo(promesa, ms) {{
+                return Promise.race([
+                    promesa,
+                    new Promise((_, rej) => setTimeout(() => rej(new Error("tiempo agotado")), ms)),
+                ]);
+            }}
+
+            function nombreConSello(base) {{
+                // Sello AAAAMMDD_HHMM con la hora real del clic (no la de
+                // cuando Python generó el Excel), para que cada guardado
+                // proponga un nombre distinto aunque los datos no cambien.
+                const d = new Date();
+                const pad = (n) => String(n).padStart(2, "0");
+                const sello = "" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate())
+                    + "_" + pad(d.getHours()) + pad(d.getMinutes());
+                return sello + "_" + base + ".xlsx";
+            }}
+
+            btn.addEventListener("click", async () => {{
+                btn.disabled = true;
+                msg.textContent = "";
+                try {{
+                    const bin = atob(datos.b64);
+                    const bytes = new Uint8Array(bin.length);
+                    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                    const fname = nombreConSello(datos.base);
+
+                    if ("showSaveFilePicker" in window) {{
+                        // Chrome / Edge: elige dónde, puede sobrescribir el original.
+                        const handle = await window.showSaveFilePicker({{
+                            suggestedName: fname,
+                            types: [{{
+                                description: "Excel",
+                                accept: {{"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"]}},
+                            }}],
+                        }});
+                        const writable = await conTiempo(handle.createWritable(), 6000);
+                        await conTiempo(writable.write(bytes), 10000);
+                        await conTiempo(writable.close(), 6000);
+                        msg.textContent = "Guardado en " + handle.name + ".";
+                        msg.style.color = "#2e7d32";
+                    }} else {{
+                        // Firefox / Safari: no hay selector, descarga normal.
+                        const blob = new Blob([bytes], {{type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}});
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = fname;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        setTimeout(() => URL.revokeObjectURL(url), 4000);
+                        msg.textContent = "Descargado como " + fname + ".";
+                        msg.style.color = "#2e7d32";
+                    }}
+                }} catch (err) {{
+                    if (err && err.name !== "AbortError") {{
+                        msg.textContent = "No se ha podido guardar: " + (err.message || err);
+                        msg.style.color = "#c62828";
+                    }} else {{
+                        msg.textContent = "";
+                    }}
+                }} finally {{
+                    btn.disabled = false;
+                }}
+            }});
+        }})();
+        </script>
+        """,
+        height=height,
+    )
 
 
 def _resumen_por_sa_docx():
@@ -573,19 +740,46 @@ def _calc_sesiones_por_evaluacion():
             "(normalmente 0, 1 o 2)</div>",
             unsafe_allow_html=True,
         )
+        # Si el Excel ya trae horas por día guardadas (R2:V2 de
+        # SituacionesAprendizaje, ver tools/situaciones_aprendizaje.py) se
+        # proponen esas; si no, 0 como hasta ahora.
+        _horas_guardadas = ss.get("sa_horas_dia") or [None] * 5
         dcols = st.columns(5)
         ses_dia = {
             i: dc.number_input(
                 nom, min_value=0, max_value=6, step=1,
-                value=int(ss.get(f"ses_d{i}", 0)), key=f"ses_d{i}",
+                value=int(ss.get(f"ses_d{i}", _horas_guardadas[i] or 0)), key=f"ses_d{i}",
+                on_change=_invalidar_prog_out,
             )
             for i, (dc, nom) in enumerate(zip(dcols, DIAS_SEMANA))
         }
 
-        deftr = default_trimester_ranges(cal)
+        # Si el Excel ya trae fechas guardadas (L2:Q2 de SituacionesAprendizaje,
+        # ver tools/situaciones_aprendizaje.py) se proponen esas; si no —o caen
+        # fuera del curso del calendario cargado—, el reparto automático en
+        # torno a Navidad y Semana Santa, como hasta ahora.
+        def _en_curso(d):
+            return d is not None and cal.course_start <= d <= cal.course_end
+
+        deftr_auto = default_trimester_ranges(cal)
+        _guardadas = ss.get("sa_fechas_trimestre", {})
+        deftr = []
+        hay_guardadas = False
+        for i in range(3):
+            ini_g, fin_g = _guardadas.get(i + 1, (None, None))
+            ini = ini_g if _en_curso(ini_g) else deftr_auto[i][0]
+            fin = fin_g if _en_curso(fin_g) else deftr_auto[i][1]
+            hay_guardadas = hay_guardadas or _en_curso(ini_g) or _en_curso(fin_g)
+            deftr.append((ini, fin))
+
         st.markdown(
-            '<div class="mini-label">Fechas de cada evaluación (se proponen en torno a '
-            "Navidad y Semana Santa; ajústalas si hace falta)</div>",
+            '<div class="mini-label">Fechas de cada evaluación '
+            + (
+                "(las que ya tenías guardadas en este Excel; ajústalas si hace falta)"
+                if hay_guardadas
+                else "(se proponen en torno a Navidad y Semana Santa; ajústalas si hace falta)"
+            )
+            + "</div>",
             unsafe_allow_html=True,
         )
         trcols = st.columns(3)
@@ -596,14 +790,18 @@ def _calc_sesiones_por_evaluacion():
                 a = st.date_input(
                     "Inicio", value=ss.get(f"ses_tr{i}a", deftr[i][0]),
                     min_value=cal.course_start, max_value=cal.course_end,
-                    key=f"ses_tr{i}a", format="DD/MM/YYYY",
+                    key=f"ses_tr{i}a", format="DD/MM/YYYY", on_change=_invalidar_prog_out,
                 )
                 b = st.date_input(
                     "Fin", value=ss.get(f"ses_tr{i}b", deftr[i][1]),
                     min_value=cal.course_start, max_value=cal.course_end,
-                    key=f"ses_tr{i}b", format="DD/MM/YYYY",
+                    key=f"ses_tr{i}b", format="DD/MM/YYYY", on_change=_invalidar_prog_out,
                 )
                 rangos.append((a, b))
+        st.caption(
+            "Las horas por día, estas fechas y el festivo local se guardan en "
+            "el Excel — la próxima vez no hace falta volver a pensarlas."
+        )
 
         extra = set()
         if cal.other_holidays:
@@ -619,12 +817,20 @@ def _calc_sesiones_por_evaluacion():
                 if st.checkbox(f"{g.name}  ({rng})", value=ss.get(f"ses_hol{i}", True), key=f"ses_hol{i}"):
                     extra |= g.days
 
+        # Si el Excel ya trae un festivo local guardado (W2) y cae dentro del
+        # curso del calendario cargado, se propone activado con esa fecha.
+        _festivo_guardado = ss.get("sa_festivo_local")
+        _festivo_en_curso = _festivo_guardado is not None and cal.course_start <= _festivo_guardado <= cal.course_end
         loc = None
-        if st.checkbox("Añadir fiesta local", value=ss.get("ses_loc_on", False), key="ses_loc_on"):
+        if st.checkbox(
+            "Añadir fiesta local", value=ss.get("ses_loc_on", _festivo_en_curso), key="ses_loc_on",
+            on_change=_invalidar_prog_out,
+        ):
             loc = st.date_input(
-                "Fecha de la fiesta local", value=ss.get("ses_loc", cal.course_start),
+                "Fecha de la fiesta local",
+                value=ss.get("ses_loc", _festivo_guardado if _festivo_en_curso else cal.course_start),
                 min_value=cal.course_start, max_value=cal.course_end,
-                key="ses_loc", format="DD/MM/YYYY",
+                key="ses_loc", format="DD/MM/YYYY", on_change=_invalidar_prog_out,
             )
 
         margen = st.slider(
@@ -974,18 +1180,14 @@ def _aplicar_regeneracion(issues):
         ss.prog_base = _reg
         ss.pa_sa_cols = read_prog_aula(_B2(_reg))["sa_cols"]
         ss.pa_sa_edits = {}
-    ss.pop("consist_issues", None)
     ss.pop("prog_out", None)
     ss.pop("pa_docx", None)
 
 
 @st.dialog("Revisión de coherencia con las situaciones de aprendizaje", width="large")
-def _dlg_coherencia(issues, contexto="carga"):
+def _dlg_coherencia(issues, contexto="guardar"):
     ss = st.session_state
     _txt = {
-        "carga": "Al cargar el Excel se ha revisado su contenido. La tabla de "
-        "**situaciones de aprendizaje** manda (SA → CE → IL → actividades) y hay "
-        "desajustes:",
         "guardar": "La tabla de **situaciones de aprendizaje** manda. Antes de "
         "guardar hay desajustes:",
         "generar": "La tabla de **situaciones de aprendizaje** manda. Antes de "
@@ -1027,23 +1229,22 @@ def _dlg_coherencia(issues, contexto="carga"):
         st.rerun()
 
 
-# ── Al cargar el Excel: si algo no cuadra con las situaciones de aprendizaje,
-#    salta el aviso (una vez, hasta que se decida qué hacer).
-if (
-    prog_excel is not None
-    and st.session_state.get("consist_issues")
-    and not st.session_state.get("consist_seen")
-):
-    _dlg_coherencia(st.session_state.consist_issues, contexto="carga")
-
 # ── Botón global "Guardar Excel" en la barra de arriba (todas las pestañas).
+# Un único botón, siempre el mismo, sin paso previo que pulsar: en cuanto hay
+# Excel cargado se calcula solo (en segundo plano, sin botón intermedio) y
+# aparece ya listo para guardar/descargar; cada clic en él (el 1º, el 2º o el
+# 1000º) hace una descarga/guardado real con el nombre actualizado a ese
+# instante. Cualquier edición posterior invalida "prog_out" (se pone a None
+# en cada Añadir/Borrar/Actualizar) y se recalcula solo otra vez. Si hay
+# desajustes de coherencia se avisa una sola vez por Excel cargado (reutiliza
+# "consist_seen", el mismo aviso que al cargar) y no en cada edición.
 with dl_box:
     if prog_excel is not None:
-        if st.button("Guardar Excel", type="primary", use_container_width=True, key="btn_save_all"):
+        if not st.session_state.get("prog_out"):
             from tools.consistencia import revisar
 
             _iss = revisar(*_estado_coherencia())
-            if _iss:
+            if _iss and not st.session_state.get("consist_seen"):
                 _dlg_coherencia(_iss, contexto="guardar")
             else:
                 try:
@@ -1055,19 +1256,9 @@ with dl_box:
         if st.session_state.get("prog_msg"):
             st.caption(f"⚠️ {st.session_state.prog_msg}")
         if st.session_state.get("prog_out"):
-            from tools.sellado import etiqueta_archivo
-
             _sello = st.session_state.get("prog_sello", "")
-            _base = prog_excel.name.rsplit(".", 1)[0]
-            _fname = f"{etiqueta_archivo(_sello)}_{_base}.xlsx" if _sello else f"{_base}_actualizado.xlsx"
-            st.download_button(
-                "Descargar .xlsx",
-                data=st.session_state.prog_out,
-                file_name=_fname,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                key="dlb_prog",
-            )
+            _base = _nombre_sin_sello(prog_excel.name.rsplit(".", 1)[0])
+            _guardar_excel_html(st.session_state.prog_out, _base)
             if _sello:
                 st.caption(f"Guardado: {_sello}")
 
