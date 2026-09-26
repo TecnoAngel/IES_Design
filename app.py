@@ -119,61 +119,80 @@ st.markdown(
         border-radius: 12px !important;
         box-shadow: 0 2px 10px rgba(166,24,46,0.08);
     }
-    /* Secciones colapsables de una pestaña (Situaciones, Criterios, …). */
-    [class*="st-key-secc_"] { margin-top: 1.3rem; }
-    [class*="st-key-secc_"] [data-testid="stExpander"] {
+    /* Barra lateral de navegación: una entrada por página. */
+    [data-testid="stSidebar"] {
+        background: var(--jcyl-cream);
+        border-right: 1px solid var(--jcyl-line);
+    }
+    .side-brand {
+        padding: 0.9rem 1rem;
+        border-radius: 14px;
+        background: linear-gradient(115deg, #8f1526 0%, #b41f3a 45%, #d99a1e 118%);
+        color: #fff;
+        margin-bottom: 1.1rem;
+        box-shadow: 0 4px 12px rgba(166,24,46,0.22);
+    }
+    .side-brand .k {
+        font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em; opacity: 0.9;
+    }
+    .side-brand .t { font-size: 1.35rem; font-weight: 700; line-height: 1.15; }
+    .st-key-active_page [role="radiogroup"] { gap: 0.35rem; width: 100%; }
+    .st-key-active_page [role="radiogroup"] > label {
+        width: 100%;
+        margin: 0;
+        padding: 0.6rem 0.85rem;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        border-left: 5px solid transparent;
+        cursor: pointer;
+        transition: background-color 0.12s ease;
+    }
+    .st-key-active_page [role="radiogroup"] > label > div:first-child { display: none; }
+    .st-key-active_page [role="radiogroup"] > label p { font-size: 1rem; font-weight: 600; }
+    .st-key-active_page [role="radiogroup"] > label:hover { background: #f3e6d3; }
+    .st-key-active_page [role="radiogroup"] > label:has(input:checked) {
+        background: #ffffff;
+        border-color: var(--jcyl-line);
+        border-left-color: var(--jcyl-red);
+        box-shadow: 0 2px 8px rgba(166,24,46,0.10);
+    }
+    .st-key-active_page [role="radiogroup"] > label:has(input:checked) p { color: var(--jcyl-red); }
+    /* Pestañas de cada página (Situaciones, Criterios, …). */
+    /* Cada pestaña es una "pastilla" separada; la activa, rellena en rojo. */
+    [data-testid="stTabs"] [role="tablist"] {
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        padding-bottom: 0.6rem;
+        border-bottom: 2px solid var(--jcyl-line);
+        margin-bottom: 0.9rem;
+    }
+    [data-testid="stTabs"] [role="tab"] {
+        height: auto !important;
+        padding: 0.45rem 1rem !important;
+        background: var(--jcyl-cream);
         border: 1px solid var(--jcyl-line) !important;
-        border-left: 6px solid var(--jcyl-red) !important;
-        border-radius: 12px !important;
-        box-shadow: 0 2px 10px rgba(166,24,46,0.10);
+        border-radius: 999px;
+        transition: background-color 0.12s ease, border-color 0.12s ease;
     }
-    [class*="st-key-secc_"] [data-testid="stExpander"] summary {
-        padding: 0.55rem 1rem !important;
-        font-size: 1.5rem !important;
-        font-weight: 750 !important;
+    [data-testid="stTabs"] [role="tab"] p {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--jcyl-ink);
+        white-space: nowrap;
     }
-    [class*="st-key-secc_"] [data-testid="stExpander"] summary * {
-        font-size: 1.5rem !important;
-        font-weight: 750 !important;
-        letter-spacing: 0.01em;
+    [data-testid="stTabs"] [role="tab"]:hover {
+        background: #f3e6d3;
+        border-color: var(--jcyl-gold) !important;
     }
-    [class*="st-key-secc_"] [data-testid="stExpander"] summary:hover {
-        color: var(--jcyl-red) !important;
+    [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+        background: var(--jcyl-red);
+        border-color: var(--jcyl-red) !important;
+        box-shadow: 0 2px 8px rgba(166,24,46,0.25);
     }
-    [class*="st-key-secc_a_"] [data-testid="stExpander"] { background: #fdfaf4; }
-    [class*="st-key-secc_a_"] [data-testid="stExpander"] summary { background: #f7efe1; }
-    [class*="st-key-secc_b_"] [data-testid="stExpander"] { background: #ffffff; }
-    /* Cabecera-botón de las secciones autónomas (_seccion_simple). */
-    [class*="st-key-sechdr_"] { margin-top: 1.3rem; }
-    [class*="st-key-sechdr_"] button {
-        justify-content: flex-start !important;
-        text-align: left !important;
-        padding: 0.55rem 1rem !important;
-        background: #f7efe1 !important;
-        border: 1px solid var(--jcyl-line) !important;
-        border-left: 6px solid var(--jcyl-red) !important;
-        border-radius: 12px !important;
-        box-shadow: 0 2px 10px rgba(166,24,46,0.10) !important;
-        color: var(--jcyl-ink) !important;
-    }
-    [class*="st-key-sechdr_"] button > div,
-    [class*="st-key-sechdr_"] button [data-testid="stMarkdownContainer"] {
-        justify-content: flex-start !important;
-        align-items: flex-start !important;
-        width: 100% !important;
-        text-align: left !important;
-    }
-    [class*="st-key-sechdr_"] button p {
-        font-size: 1.5rem !important;
-        font-weight: 750 !important;
-        letter-spacing: 0.01em;
-        text-align: left !important;
-        width: 100% !important;
-    }
-    [class*="st-key-sechdr_"] button:hover {
-        border-left-color: var(--jcyl-gold) !important;
-        color: var(--jcyl-red) !important;
-    }
+    [data-testid="stTabs"] [role="tab"][aria-selected="true"] p { color: #ffffff; }
+    /* Sin la línea deslizante ni el borde por defecto de BaseWeb. */
+    [data-testid="stTabs"] [data-baseweb="tab-highlight"],
+    [data-testid="stTabs"] [data-baseweb="tab-border"] { display: none; }
     .mini-label {
         font-size: 0.8rem;
         font-weight: 600;
@@ -248,10 +267,11 @@ st.markdown(
 
 st.markdown("")
 
-# streamlit-aggrid se renderiza en un <iframe>: dentro de un st.expander puede
-# montarse con ancho 0 y quedarse "en una columna". Este parche fuerza el ancho
-# de esos iframes al 100 % y lanza un 'resize' para que AG-Grid recoloque las
-# columnas, al abrir/cerrar cualquier sección y durante los primeros segundos.
+# streamlit-aggrid se renderiza en un <iframe>: dentro de una pestaña oculta (o
+# un st.expander plegado) puede montarse con ancho 0 y quedarse "en una
+# columna". Este parche fuerza el ancho de esos iframes al 100 % y lanza un
+# 'resize' para que AG-Grid recoloque las columnas, al cambiar de pestaña /
+# abrir una sección y durante los primeros segundos.
 components.html(
     """
     <script>
@@ -259,7 +279,7 @@ components.html(
       const doc = window.parent.document;
       function nudge() {
         doc.querySelectorAll('iframe').forEach(f => {
-          if (f.closest('[data-testid="stExpander"]')) {
+          if (f.closest('[data-testid="stExpander"], [data-testid="stTabs"]')) {
             f.style.width = '100%';
             try { f.contentWindow.dispatchEvent(new Event('resize')); } catch (e) {}
           }
@@ -267,7 +287,7 @@ components.html(
         window.parent.dispatchEvent(new Event('resize'));
       }
       doc.addEventListener('click', e => {
-        if (e.target.closest('summary')) { [60, 250, 600].forEach(t => setTimeout(nudge, t)); }
+        if (e.target.closest('summary, [role="tab"]')) { [60, 250, 600, 1200].forEach(t => setTimeout(nudge, t)); }
       }, true);
       let n = 0;
       const iv = setInterval(() => { nudge(); if (++n > 20) clearInterval(iv); }, 350);
@@ -277,18 +297,22 @@ components.html(
     height=0,
 )
 
-# st.tabs no conserva la pestaña activa entre reruns (cada clic en un botón
-# devuelve la vista a la primera pestaña), así que la navegación se hace con
-# un widget normal atado a session_state para que sea persistente.
-PAGES = ["Inicio", "Diseño de la programación", "Contenidos", "Programación de aula"]
-page = st.segmented_control(
-    "Navegación",
-    PAGES,
-    default=PAGES[0],
-    key="active_page",
-    required=True,
-    label_visibility="collapsed",
-)
+# Navegación principal en la barra lateral (widget atado a session_state, así
+# que la página activa se conserva entre reruns). Dentro de cada página, los
+# bloques van en st.tabs con key + on_change="rerun" (también persistentes).
+PAGES = ["Diseño de la programación", "Contenidos", "Programación de aula"]
+with st.sidebar:
+    st.markdown(
+        '<div class="side-brand"><div class="k">Programación didáctica</div>'
+        '<div class="t">IES Diseño</div></div>',
+        unsafe_allow_html=True,
+    )
+    page = st.radio(
+        "Navegación",
+        PAGES,
+        key="active_page",
+        label_visibility="collapsed",
+    )
 
 # ── Barra global del Excel de programación: cargar / descargar desde cualquier
 #    pestaña. La descarga se rellena luego (dl_box), cuando la pestaña activa ya
@@ -663,31 +687,27 @@ def _generar_docx(data_bytes) -> bytes:
     )
 
 
-def _seccion(titulo, idx, *, abierto=False):
-    """Sección colapsable de una pestaña (`st.expander`). El cuerpo se ejecuta
-    siempre (aunque esté plegada) para no romper el flujo de datos entre
-    secciones. `idx` fija el tono alterno vía CSS (`.st-key-secc_<par>_<idx>`)."""
-    par = "a" if idx % 2 == 0 else "b"
-    return st.expander(titulo, expanded=abierto, key=f"secc_{par}_{idx}")
-
-
-def _seccion_simple(titulo, idx, *, abierto=True):
-    """Sección colapsable para bloques autónomos (no exportan variables a otros
-    bloques). Cabecera-botón grande y, si está plegada, el cuerpo NO se ejecuta
-    → una tabla AgGrid solo se monta con ancho real. Devuelve el estado abierto."""
+def _pestanas(key, titulos):
+    """Pestañas de una página. Con `key` + `on_change="rerun"` la pestaña activa
+    se conserva entre reruns (Añadir/Borrar/Actualizar no devuelven a la
+    primera) y cada contenedor expone `.open`. OJO: en «Diseño» el cuerpo de
+    TODAS las pestañas se ejecuta siempre (no se mira `.open`) porque unas
+    usan variables que definen otras (`sits`, `ce_p`, `pending`).
+    Al cambiar de página en la barra lateral el widget no se pinta y Streamlit
+    borra su estado; la última pestaña se guarda aparte (`_last_<key>`) para
+    volver a ella."""
     ss = st.session_state
-    k = f"secs_{idx}"
-    ss.setdefault(k, abierto)
-    with st.container(key=f"sechdr_{idx}"):
-        if st.button(f"{'▾' if ss[k] else '▸'}  {titulo}", key=f"secs_btn_{idx}",
-                     use_container_width=True):
-            ss[k] = not ss[k]
-            st.rerun()
-    return ss[k]
+    last = f"_last_{key}"
+
+    def _recordar():
+        ss[last] = ss[key]
+
+    default = ss.get(last) if ss.get(last) in titulos else None
+    return st.tabs(titulos, key=key, default=default, on_change=_recordar)
 
 
 def _calc_sesiones_por_evaluacion():
-    """Menú colapsable (dentro de Situaciones de aprendizaje): con el calendario
+    """Pestaña «Sesiones por evaluación» de Diseño: con el calendario
     escolar oficial de Castilla y León y las sesiones de la materia por día de la
     semana, cuenta día a día los días lectivos y las sesiones de cada evaluación.
     El resultado puede volcarse a las «horas previstas» de cada trimestre."""
@@ -696,191 +716,190 @@ def _calc_sesiones_por_evaluacion():
     ss = st.session_state
     ss.setdefault("sa_previstas", {})
 
-    with _seccion("Calcular sesiones por evaluación (calendario oficial)", 1):
-        from tools.sesiones_calendario import (
-            DEFAULT_CALENDAR_URL,
-            DIAS_SEMANA,
-            contar_evaluacion,
-            default_trimester_ranges,
-            fetch_school_calendar,
-        )
+    from tools.sesiones_calendario import (
+        DEFAULT_CALENDAR_URL,
+        DIAS_SEMANA,
+        contar_evaluacion,
+        default_trimester_ranges,
+        fetch_school_calendar,
+    )
 
-        st.caption(
-            "Cuenta día a día los días lectivos de cada evaluación según el calendario "
-            "escolar de Castilla y León y, con las sesiones que tengas cada día de la "
-            "semana, las sesiones totales de tu materia. El resultado se puede volcar a "
-            "«horas previstas»."
-        )
+    st.caption(
+        "Cuenta día a día los días lectivos de cada evaluación según el calendario "
+        "escolar de Castilla y León y, con las sesiones que tengas cada día de la "
+        "semana, las sesiones totales de tu materia. El resultado se puede volcar a "
+        "«horas previstas»."
+    )
 
-        u1, u2 = st.columns([3, 1])
-        url = u1.text_input("URL del calendario (JCyL)", value=DEFAULT_CALENDAR_URL, key="ses_url")
-        if u2.button("Cargar calendario", use_container_width=True, key="ses_load"):
-            for k in [k for k in list(ss.keys()) if k.startswith(("ses_tr", "ses_hol")) or k == "ses_loc"]:
-                ss.pop(k, None)
-            try:
-                ss.ses_cal = fetch_school_calendar(url)
-                st.success("Calendario cargado.")
-            except Exception as exc:
-                ss.pop("ses_cal", None)
-                st.error(f"No se ha podido leer el calendario: {exc}")
+    u1, u2 = st.columns([3, 1])
+    url = u1.text_input("URL del calendario (JCyL)", value=DEFAULT_CALENDAR_URL, key="ses_url")
+    if u2.button("Cargar calendario", use_container_width=True, key="ses_load"):
+        for k in [k for k in list(ss.keys()) if k.startswith(("ses_tr", "ses_hol")) or k == "ses_loc"]:
+            ss.pop(k, None)
+        try:
+            ss.ses_cal = fetch_school_calendar(url)
+            st.success("Calendario cargado.")
+        except Exception as exc:
+            ss.pop("ses_cal", None)
+            st.error(f"No se ha podido leer el calendario: {exc}")
 
-        cal = ss.get("ses_cal")
-        if cal is None:
-            st.info("Carga el calendario oficial para calcular.")
-            return
+    cal = ss.get("ses_cal")
+    if cal is None:
+        st.info("Carga el calendario oficial para calcular.")
+        return
 
-        st.markdown(
-            f"**Curso ESO:** {cal.course_start:%d/%m/%Y} – {cal.course_end:%d/%m/%Y}  \n"
-            f"**Navidad:** {min(cal.christmas_days):%d/%m/%Y} – {max(cal.christmas_days):%d/%m/%Y} · "
-            f"**Semana Santa:** {min(cal.easter_days):%d/%m/%Y} – {max(cal.easter_days):%d/%m/%Y}"
-        )
+    st.markdown(
+        f"**Curso ESO:** {cal.course_start:%d/%m/%Y} – {cal.course_end:%d/%m/%Y}  \n"
+        f"**Navidad:** {min(cal.christmas_days):%d/%m/%Y} – {max(cal.christmas_days):%d/%m/%Y} · "
+        f"**Semana Santa:** {min(cal.easter_days):%d/%m/%Y} – {max(cal.easter_days):%d/%m/%Y}"
+    )
 
-        st.markdown(
-            '<div class="mini-label">Sesiones de la materia por día de la semana '
-            "(normalmente 0, 1 o 2)</div>",
-            unsafe_allow_html=True,
-        )
-        # Si el Excel ya trae horas por día guardadas (R2:V2 de
-        # SituacionesAprendizaje, ver tools/situaciones_aprendizaje.py) se
-        # proponen esas; si no, 0 como hasta ahora.
-        _horas_guardadas = ss.get("sa_horas_dia") or [None] * 5
-        dcols = st.columns(5)
-        ses_dia = {
-            i: dc.number_input(
-                nom, min_value=0, max_value=6, step=1,
-                value=int(ss.get(f"ses_d{i}", _horas_guardadas[i] or 0)), key=f"ses_d{i}",
-                on_change=_invalidar_prog_out,
-            )
-            for i, (dc, nom) in enumerate(zip(dcols, DIAS_SEMANA))
-        }
-
-        # Si el Excel ya trae fechas guardadas (L2:Q2 de SituacionesAprendizaje,
-        # ver tools/situaciones_aprendizaje.py) se proponen esas; si no —o caen
-        # fuera del curso del calendario cargado—, el reparto automático en
-        # torno a Navidad y Semana Santa, como hasta ahora.
-        def _en_curso(d):
-            return d is not None and cal.course_start <= d <= cal.course_end
-
-        deftr_auto = default_trimester_ranges(cal)
-        _guardadas = ss.get("sa_fechas_trimestre", {})
-        deftr = []
-        hay_guardadas = False
-        for i in range(3):
-            ini_g, fin_g = _guardadas.get(i + 1, (None, None))
-            ini = ini_g if _en_curso(ini_g) else deftr_auto[i][0]
-            fin = fin_g if _en_curso(fin_g) else deftr_auto[i][1]
-            hay_guardadas = hay_guardadas or _en_curso(ini_g) or _en_curso(fin_g)
-            deftr.append((ini, fin))
-
-        st.markdown(
-            '<div class="mini-label">Fechas de cada evaluación '
-            + (
-                "(las que ya tenías guardadas en este Excel; ajústalas si hace falta)"
-                if hay_guardadas
-                else "(se proponen en torno a Navidad y Semana Santa; ajústalas si hace falta)"
-            )
-            + "</div>",
-            unsafe_allow_html=True,
-        )
-        trcols = st.columns(3)
-        rangos = []
-        for i, (tc, lbl) in enumerate(zip(trcols, ("1ª evaluación", "2ª evaluación", "3ª evaluación"))):
-            with tc:
-                st.markdown(f"**{lbl}**")
-                a = st.date_input(
-                    "Inicio", value=ss.get(f"ses_tr{i}a", deftr[i][0]),
-                    min_value=cal.course_start, max_value=cal.course_end,
-                    key=f"ses_tr{i}a", format="DD/MM/YYYY", on_change=_invalidar_prog_out,
-                )
-                b = st.date_input(
-                    "Fin", value=ss.get(f"ses_tr{i}b", deftr[i][1]),
-                    min_value=cal.course_start, max_value=cal.course_end,
-                    key=f"ses_tr{i}b", format="DD/MM/YYYY", on_change=_invalidar_prog_out,
-                )
-                rangos.append((a, b))
-        st.caption(
-            "Las horas por día, estas fechas y el festivo local se guardan en "
-            "el Excel — la próxima vez no hace falta volver a pensarlas."
-        )
-
-        extra = set()
-        if cal.other_holidays:
-            st.markdown(
-                '<div class="mini-label">Festivos y días no lectivos a descontar</div>',
-                unsafe_allow_html=True,
-            )
-            for i, g in enumerate(cal.other_holidays):
-                rng = (
-                    f"{g.start:%d/%m/%Y}" if g.start == g.end
-                    else f"{g.start:%d/%m/%Y} – {g.end:%d/%m/%Y}"
-                )
-                if st.checkbox(f"{g.name}  ({rng})", value=ss.get(f"ses_hol{i}", True), key=f"ses_hol{i}"):
-                    extra |= g.days
-
-        # Si el Excel ya trae un festivo local guardado (W2) y cae dentro del
-        # curso del calendario cargado, se propone activado con esa fecha.
-        _festivo_guardado = ss.get("sa_festivo_local")
-        _festivo_en_curso = _festivo_guardado is not None and cal.course_start <= _festivo_guardado <= cal.course_end
-        loc = None
-        if st.checkbox(
-            "Añadir fiesta local", value=ss.get("ses_loc_on", _festivo_en_curso), key="ses_loc_on",
+    st.markdown(
+        '<div class="mini-label">Sesiones de la materia por día de la semana '
+        "(normalmente 0, 1 o 2)</div>",
+        unsafe_allow_html=True,
+    )
+    # Si el Excel ya trae horas por día guardadas (R2:V2 de
+    # SituacionesAprendizaje, ver tools/situaciones_aprendizaje.py) se
+    # proponen esas; si no, 0 como hasta ahora.
+    _horas_guardadas = ss.get("sa_horas_dia") or [None] * 5
+    dcols = st.columns(5)
+    ses_dia = {
+        i: dc.number_input(
+            nom, min_value=0, max_value=6, step=1,
+            value=int(ss.get(f"ses_d{i}", _horas_guardadas[i] or 0)), key=f"ses_d{i}",
             on_change=_invalidar_prog_out,
-        ):
-            loc = st.date_input(
-                "Fecha de la fiesta local",
-                value=ss.get("ses_loc", _festivo_guardado if _festivo_en_curso else cal.course_start),
+        )
+        for i, (dc, nom) in enumerate(zip(dcols, DIAS_SEMANA))
+    }
+
+    # Si el Excel ya trae fechas guardadas (L2:Q2 de SituacionesAprendizaje,
+    # ver tools/situaciones_aprendizaje.py) se proponen esas; si no —o caen
+    # fuera del curso del calendario cargado—, el reparto automático en
+    # torno a Navidad y Semana Santa, como hasta ahora.
+    def _en_curso(d):
+        return d is not None and cal.course_start <= d <= cal.course_end
+
+    deftr_auto = default_trimester_ranges(cal)
+    _guardadas = ss.get("sa_fechas_trimestre", {})
+    deftr = []
+    hay_guardadas = False
+    for i in range(3):
+        ini_g, fin_g = _guardadas.get(i + 1, (None, None))
+        ini = ini_g if _en_curso(ini_g) else deftr_auto[i][0]
+        fin = fin_g if _en_curso(fin_g) else deftr_auto[i][1]
+        hay_guardadas = hay_guardadas or _en_curso(ini_g) or _en_curso(fin_g)
+        deftr.append((ini, fin))
+
+    st.markdown(
+        '<div class="mini-label">Fechas de cada evaluación '
+        + (
+            "(las que ya tenías guardadas en este Excel; ajústalas si hace falta)"
+            if hay_guardadas
+            else "(se proponen en torno a Navidad y Semana Santa; ajústalas si hace falta)"
+        )
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+    trcols = st.columns(3)
+    rangos = []
+    for i, (tc, lbl) in enumerate(zip(trcols, ("1ª evaluación", "2ª evaluación", "3ª evaluación"))):
+        with tc:
+            st.markdown(f"**{lbl}**")
+            a = st.date_input(
+                "Inicio", value=ss.get(f"ses_tr{i}a", deftr[i][0]),
                 min_value=cal.course_start, max_value=cal.course_end,
-                key="ses_loc", format="DD/MM/YYYY", on_change=_invalidar_prog_out,
+                key=f"ses_tr{i}a", format="DD/MM/YYYY", on_change=_invalidar_prog_out,
             )
+            b = st.date_input(
+                "Fin", value=ss.get(f"ses_tr{i}b", deftr[i][1]),
+                min_value=cal.course_start, max_value=cal.course_end,
+                key=f"ses_tr{i}b", format="DD/MM/YYYY", on_change=_invalidar_prog_out,
+            )
+            rangos.append((a, b))
+    st.caption(
+        "Las horas por día, estas fechas y el festivo local se guardan en "
+        "el Excel — la próxima vez no hace falta volver a pensarlas."
+    )
 
-        margen = st.slider(
-            "Margen de seguridad (% de sesiones que se prevé perder: excursiones, "
-            "actividades, imprevistos…)",
-            min_value=0, max_value=50, value=int(ss.get("ses_margen", 10)), step=1,
-            key="ses_margen",
+    extra = set()
+    if cal.other_holidays:
+        st.markdown(
+            '<div class="mini-label">Festivos y días no lectivos a descontar</div>',
+            unsafe_allow_html=True,
         )
-        factor = margen / 100
+        for i, g in enumerate(cal.other_holidays):
+            rng = (
+                f"{g.start:%d/%m/%Y}" if g.start == g.end
+                else f"{g.start:%d/%m/%Y} – {g.end:%d/%m/%Y}"
+            )
+            if st.checkbox(f"{g.name}  ({rng})", value=ss.get(f"ses_hol{i}", True), key=f"ses_hol{i}"):
+                extra |= g.days
 
-        no_lectivos = cal.holiday_days | extra | ({loc} if loc else set())
-        resultados = [contar_evaluacion(a, b, ses_dia, no_lectivos, factor) for a, b in rangos]
-
-        st.dataframe(
-            pd.DataFrame(
-                [
-                    {
-                        "Evaluación": lbl,
-                        "Días lectivos": c.dias_lectivos,
-                        "Días con clase": c.dias_con_clase,
-                        "Sesiones": c.sesiones,
-                        f"Sesiones −{margen}%": c.sesiones_ajustadas,
-                        "Festivos restados": c.festivos_restados,
-                    }
-                    for lbl, c in zip(("1ª", "2ª", "3ª"), resultados)
-                ]
-            ),
-            hide_index=True, use_container_width=True,
-        )
-        st.caption(
-            f"Total curso: **{sum(c.sesiones for c in resultados)} sesiones** "
-            f"({sum(c.sesiones_ajustadas for c in resultados)} con el margen) · "
-            f"{sum(c.dias_lectivos for c in resultados)} días lectivos"
+    # Si el Excel ya trae un festivo local guardado (W2) y cae dentro del
+    # curso del calendario cargado, se propone activado con esa fecha.
+    _festivo_guardado = ss.get("sa_festivo_local")
+    _festivo_en_curso = _festivo_guardado is not None and cal.course_start <= _festivo_guardado <= cal.course_end
+    loc = None
+    if st.checkbox(
+        "Añadir fiesta local", value=ss.get("ses_loc_on", _festivo_en_curso), key="ses_loc_on",
+        on_change=_invalidar_prog_out,
+    ):
+        loc = st.date_input(
+            "Fecha de la fiesta local",
+            value=ss.get("ses_loc", _festivo_guardado if _festivo_en_curso else cal.course_start),
+            min_value=cal.course_start, max_value=cal.course_end,
+            key="ses_loc", format="DD/MM/YYYY", on_change=_invalidar_prog_out,
         )
 
-        ss._ses_prev = {
-            tri: float(c.sesiones_ajustadas) for tri, c in zip(TRIMESTRES, resultados)
-        }
+    margen = st.slider(
+        "Margen de seguridad (% de sesiones que se prevé perder: excursiones, "
+        "actividades, imprevistos…)",
+        min_value=0, max_value=50, value=int(ss.get("ses_margen", 10)), step=1,
+        key="ses_margen",
+    )
+    factor = margen / 100
 
-        def _volcar():
-            for tri, val in st.session_state.get("_ses_prev", {}).items():
-                st.session_state[f"sa_prev_{tri}"] = val
-                st.session_state.sa_previstas[tri] = val
-            st.session_state.pop("prog_out", None)
+    no_lectivos = cal.holiday_days | extra | ({loc} if loc else set())
+    resultados = [contar_evaluacion(a, b, ses_dia, no_lectivos, factor) for a, b in rangos]
 
-        st.button(
-            f"Usar estas sesiones (con el margen del {margen}%) como horas previstas "
-            "de cada trimestre",
-            key="ses_apply", type="primary", on_click=_volcar,
-        )
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "Evaluación": lbl,
+                    "Días lectivos": c.dias_lectivos,
+                    "Días con clase": c.dias_con_clase,
+                    "Sesiones": c.sesiones,
+                    f"Sesiones −{margen}%": c.sesiones_ajustadas,
+                    "Festivos restados": c.festivos_restados,
+                }
+                for lbl, c in zip(("1ª", "2ª", "3ª"), resultados)
+            ]
+        ),
+        hide_index=True, use_container_width=True,
+    )
+    st.caption(
+        f"Total curso: **{sum(c.sesiones for c in resultados)} sesiones** "
+        f"({sum(c.sesiones_ajustadas for c in resultados)} con el margen) · "
+        f"{sum(c.dias_lectivos for c in resultados)} días lectivos"
+    )
+
+    ss._ses_prev = {
+        tri: float(c.sesiones_ajustadas) for tri, c in zip(TRIMESTRES, resultados)
+    }
+
+    def _volcar():
+        for tri, val in st.session_state.get("_ses_prev", {}).items():
+            st.session_state[f"sa_prev_{tri}"] = val
+            st.session_state.sa_previstas[tri] = val
+        st.session_state.pop("prog_out", None)
+
+    st.button(
+        f"Usar estas sesiones (con el margen del {margen}%) como horas previstas "
+        "de cada trimestre",
+        key="ses_apply", type="primary", on_click=_volcar,
+    )
 
 
 def _ipf_cargar(p_por_ce, pil_por_il, ce_ced, ce_list):
@@ -1262,12 +1281,8 @@ with dl_box:
             if _sello:
                 st.caption(f"Guardado: {_sello}")
 
-# PÁGINA: INICIO
-if page == "Inicio":
-    st.markdown('<div class="panel-card"><h3>Bienvenido</h3><p>Elige una sección arriba para empezar.</p></div>', unsafe_allow_html=True)
-
 # PÁGINA: DISEÑO DE LA PROGRAMACIÓN
-elif page == "Diseño de la programación":
+if page == "Diseño de la programación":
     st.caption(
         "Edita las tablas curriculares del Excel de programación sin romper el libro. "
         "Carga y descarga el archivo en la barra de arriba."
@@ -1296,8 +1311,20 @@ elif page == "Diseño de la programación":
             zebra_styler,
         )
 
-        # ───────────────── SECCIÓN: SITUACIONES DE APRENDIZAJE ─────────────────
-        with _seccion("Situaciones de aprendizaje", 0, abierto=True):
+        (
+            _tab_sa, _tab_ses, _tab_ce, _tab_il, _tab_aj, _tab_dist, _tab_pf,
+        ) = _pestanas("tabs_diseno", [
+            "Situaciones de aprendizaje",
+            "Sesiones por evaluación",
+            "Criterios de evaluación",
+            "Indicadores de logro",
+            "Ajuste de pesos",
+            "Distribución CE × SA",
+            "Peso final por instrumento",
+        ])
+
+        # ───────────────── PESTAÑA: SITUACIONES DE APRENDIZAJE ─────────────────
+        with _tab_sa:
             from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
             st.session_state.setdefault("sa_nonce", 0)
@@ -1536,16 +1563,17 @@ elif page == "Diseño de la programación":
             if errores:
                 st.warning("Situaciones — avisos:\n\n- " + "\n- ".join(errores))
 
-        # ───────────────── SECCIÓN: CALCULADORA DE SESIONES ─────────────────
-        _calc_sesiones_por_evaluacion()
+        # ───────────────── PESTAÑA: CALCULADORA DE SESIONES ─────────────────
+        with _tab_ses:
+            _calc_sesiones_por_evaluacion()
 
         ce_list = st.session_state.il_ce_list
         ce_ced = st.session_state.il_ce_ced
         aux = st.session_state.il_aux
         sa_options = sorted({s.sa for s in sits if s.sa})
 
-        # ───────────────── SECCIÓN: CRITERIOS DE EVALUACIÓN ─────────────────
-        with _seccion("Criterios de evaluación", 2, abierto=True):
+        # ───────────────── PESTAÑA: CRITERIOS DE EVALUACIÓN ─────────────────
+        with _tab_ce:
             from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
             st.session_state.setdefault("ce_nonce", 0)
@@ -1686,7 +1714,7 @@ elif page == "Diseño de la programación":
                 "SA": None if r.get("SA") in (None, "") or pd.isna(r.get("SA")) else int(float(r.get("SA"))),
             }
 
-        with _seccion("Indicadores de logro", 3, abierto=True):
+        with _tab_il:
             st.markdown(
                 '<div class="mini-label">CE se elige de la lista · CED e IL (4.2.1, 4.2.2…) '
                 "son automáticos · PIL a mano, PIL% automático · SA solo entre las de arriba · "
@@ -1924,17 +1952,16 @@ elif page == "Diseño de la programación":
                     hide_index=True,
                 )
 
-        # ─── SECCIÓN: AJUSTE DE PESOS ───
-        with _seccion("Ajuste de pesos (objetivo por instrumento + reparto horario)", 4):
+        # ─── PESTAÑA: AJUSTE DE PESOS ───
+        with _tab_aj:
+            st.caption("Objetivo por instrumento de evaluación + reparto horario de las situaciones.")
             _ajuste_pesos_ipf(
                 il_recompute(pending, ce_ced, ce_list), ce_list, ce_ced, ce_p, sits
             )
 
-        # ─────── SECCIÓN: DISTRIBUCIÓN DE PORCENTAJES POR CE Y SA ───────
-        with _seccion(
-            "Distribución de porcentajes por criterios de evaluación y "
-            "situaciones de aprendizaje", 5, abierto=True,
-        ):
+        # ─────── PESTAÑA: DISTRIBUCIÓN DE PORCENTAJES POR CE Y SA ───────
+        with _tab_dist:
+            st.caption("Distribución de porcentajes por criterios de evaluación y situaciones de aprendizaje.")
             from st_aggrid import AgGrid, ColumnsAutoSizeMode, GridOptionsBuilder
             from tools.indicadores_logro import matriz_sa_ce
             from tools.situaciones_informe import (
@@ -2032,8 +2059,8 @@ elif page == "Diseño de la programación":
                     use_container_width=True, key="dl_cmp_png",
                 )
 
-        # ─────── SECCIÓN: PESO FINAL POR INSTRUMENTO DE EVALUACIÓN ───────
-        with _seccion("Peso final por instrumento de evaluación", 6):
+        # ─────── PESTAÑA: PESO FINAL POR INSTRUMENTO DE EVALUACIÓN ───────
+        with _tab_pf:
             from tools.indicadores_logro import peso_por_ie
             from tools.situaciones_informe import build_pie_png_simple
 
@@ -2133,11 +2160,15 @@ elif page == "Contenidos":
                    height=min(460, 44 + 28 * len(df)), theme="balham",
                    update_on=[], key=grid_key)
 
-        if _seccion_simple("Contenidos de la materia", "con_mat", abierto=True):
-            _render(_el["contenidos"], "cod", "desc", "Código", _con_used, "ec_grid_con")
-
-        if _seccion_simple("Contenidos transversales", "con_tr", abierto=True):
-            _render(_el["transversales"], "num", "desc", "Nº", _ct_used, "ec_grid_ct")
+        _tab_cm, _tab_ctr = _pestanas(
+            "tabs_contenidos", ["Contenidos de la materia", "Contenidos transversales"]
+        )
+        with _tab_cm:
+            if _tab_cm.open:
+                _render(_el["contenidos"], "cod", "desc", "Código", _con_used, "ec_grid_con")
+        with _tab_ctr:
+            if _tab_ctr.open:
+                _render(_el["transversales"], "num", "desc", "Nº", _ct_used, "ec_grid_ct")
 
 # PÁGINA: PROGRAMACIÓN DE AULA
 elif page == "Programación de aula":
@@ -2223,240 +2254,247 @@ elif page == "Programación de aula":
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             )
 
-        # ── SECCIÓN: Datos generales
+        _tab_pad, _tab_pact = _pestanas(
+            "tabs_aula", ["Datos generales", "Actividades por situación de aprendizaje"]
+        )
+
+        # ── PESTAÑA: Datos generales
         _LARGOS = {
             "alumnos_atencion_individualizada", "caracteristicas_fisicas_cognitivas_afectivas",
             "nivel_competencia_curricular", "otras_caracteristicas_grupo",
             "resultados_evaluacion_inicial", "conclusiones_evaluacion_inicial",
             "resultados_evaluacion_aprendizajes", "revision_programacion",
         }
-        if _seccion_simple("Datos generales", "pa_datos", abierto=True):
-            _cortos = [k for k in ss.pa_campos_datos if k not in _LARGOS]
-            _cc = st.columns(2)
-            for i, k in enumerate(_cortos):
-                ss.pa_datos[k] = _cc[i % 2].text_input(_hum(k), value=ss.pa_datos.get(k, ""), key=f"pad_{k}")
-            for k in ss.pa_campos_datos:
-                if k in _LARGOS:
-                    ss.pa_datos[k] = st.text_area(_hum(k), value=ss.pa_datos.get(k, ""), key=f"pad_{k}", height=90)
+        with _tab_pad:
+            if _tab_pad.open:
+                _cortos = [k for k in ss.pa_campos_datos if k not in _LARGOS]
+                _cc = st.columns(2)
+                for i, k in enumerate(_cortos):
+                    ss.pa_datos[k] = _cc[i % 2].text_input(_hum(k), value=ss.pa_datos.get(k, ""), key=f"pad_{k}")
+                for k in ss.pa_campos_datos:
+                    if k in _LARGOS:
+                        ss.pa_datos[k] = st.text_area(_hum(k), value=ss.pa_datos.get(k, ""), key=f"pad_{k}", height=90)
 
-        # ── SECCIÓN: Actividades por situación de aprendizaje
-        if _seccion_simple("Diseño de actividades por situación de aprendizaje", "pa_act", abierto=True):
-            _lbl = {sa: f"{sa}: {d}" for sa, d in _sa_opts}
-            sa_sel = st.selectbox(
-                "Situación de aprendizaje", [sa for sa, _ in _sa_opts],
-                format_func=lambda s: _lbl.get(s, str(s)), key="pa_sa_sel",
-            )
-            _ils_sa = [r["IL"] for r in _il_state if r["SA"] == sa_sel]
-
-            _acts_sa = [a for a in ss.pa_acts if a.get("IL") in _ils_sa]
-            _acts_otras = [a for a in ss.pa_acts if a.get("IL") not in _ils_sa]
-
-            # Cada IL de la SA debe tener al menos una fila: si no hay ninguna
-            # actividad para ese IL, se muestra una en blanco para rellenar
-            # (peso vacío = fila de plantilla que no se guarda hasta tocarla).
-            _con_act = {a["IL"] for a in _acts_sa}
-            _acts_sa_disp = _acts_sa + [
-                {"IL": il, "A": "", "DA": "", "PA": None}
-                for il in _ils_sa if il not in _con_act
-            ]
-
-            st.markdown(
-                f'<div class="mini-label">Actividades de los IL de esta SA '
-                f"({', '.join(_ils_sa) or '—'}) · cada IL trae al menos una fila para rellenar "
-                "· A (código) y PA%/FACTOR se recalculan al pulsar Actualizar</div>",
-                unsafe_allow_html=True,
-            )
-            pc1, pc2, pc3, pc4 = st.columns([1.4, 1.3, 1.2, 3])
-            _add_il = pc1.selectbox("IL", _ils_sa or ["—"], key="pa_add_il", label_visibility="collapsed")
-            _pa_add = pc2.button("Añadir actividad", use_container_width=True, key="pa_add")
-            _pa_del = pc3.button("Borrar marcadas", use_container_width=True, key="pa_del")
-            _pa_upd = pc4.button("Actualizar", use_container_width=True, type="primary", key="pa_upd")
-
-            _rc = recompute_actividades(_acts_sa_disp, _pil_por_il)
-            _il_info = {r["IL"]: r for r in _il_state}
-            _adf = pd.DataFrame(
-                [
-                    {"X": False, "IL": r["IL"], "A": r["A"], "DA": r["DA"],
-                     "PA": r["PA"],
-                     "PA%": None if r["PA%"] is None else r["PA%"] * 100,
-                     "FACTOR": r["FACTOR"],
-                     "IE": _il_info.get(r["IL"], {}).get("IE", ""),
-                     "_DIL": _il_info.get(r["IL"], {}).get("DIL", ""),
-                     "_pick": "",  # aviso de clic en IL (resumen del indicador)
-                     }
-                    for r in _rc
-                ],
-                columns=["X", "IL", "A", "DA", "PA", "PA%", "FACTOR", "IE", "_DIL", "_pick"],
-            )
-            _adf["X"] = _adf["X"].astype(bool)
-            _agb = GridOptionsBuilder.from_dataframe(_adf)
-            _agb.configure_default_column(editable=True, resizable=True, sortable=False, filter=False)
-            _agb.configure_column("X", headerName="", width=44, pinned="left",
-                                  cellRenderer="agCheckboxCellRenderer",
-                                  cellEditor="agCheckboxCellEditor", cellDataType="boolean")
-            _agb.configure_column(
-                "IL", width=84, cellDataType="text", cellEditor="agSelectCellEditor",
-                cellEditorParams={"values": _ils_sa},
-                headerTooltip="Un clic: resumen del indicador · doble clic: cambiar de IL",
-                tooltipValueGetter=JsCode(
-                    "function(p){return (p.data && p.data._DIL) ? p.data._DIL : '';}"
-                ),
-                onCellClicked=JsCode(
-                    # Un solo clic abre el resumen; si llega un segundo clic enseguida
-                    # (doble clic para reasignar el IL), se cancela y no se abre nada.
-                    "function(p){"
-                    "if (p.node.__dlgTimer) { clearTimeout(p.node.__dlgTimer); p.node.__dlgTimer = null; return; }"
-                    "p.node.__dlgTimer = setTimeout(function(){"
-                    "p.node.__dlgTimer = null;"
-                    "p.node.setDataValue('_pick', String(p.rowIndex) + '|' + Date.now());"
-                    "}, 280);"
-                    "}"
-                ),
-            )
-            _agb.configure_column("A", editable=False, width=96)
-            _agb.configure_column("DA", headerName="Descripción", flex=1, minWidth=240,
-                                  cellDataType="text", tooltipField="DA")
-            _agb.configure_column("PA", headerName="Peso", width=80, cellDataType="number", type=["numericColumn"])
-            _agb.configure_column("PA%", editable=False, width=84,
-                                  valueFormatter=JsCode("function(p){return p.value==null?'':Number(p.value).toFixed(1)+' %'}"))
-            _agb.configure_column("FACTOR", editable=False, width=90,
-                                  valueFormatter=JsCode("function(p){return p.value==null?'':Number(p.value).toFixed(3)}"))
-            _agb.configure_column("IE", editable=False, width=140, tooltipField="IE")
-            _agb.configure_column("_DIL", hide=True)
-            _agb.configure_column("_pick", hide=True)
-            _agb.configure_grid_options(enableBrowserTooltips=True, rowHeight=30)
-            _agrid = AgGrid(
-                _adf, gridOptions=_agb.build(), update_on=[("cellValueChanged", 300)],
-                allow_unsafe_jscode=True, fit_columns_on_grid_load=False,
-                custom_css=AGGRID_GRID_CSS,
-                height=max(190, min(430, 95 + 33 * max(len(_adf), 1))),
-                theme="balham", key=f"pa_acts_grid_{sa_sel}_{ss.pa_nonce}",
-            )
-            _ag = pd.DataFrame(_agrid["data"])
-            if _ag.empty or "IL" not in _ag.columns:
-                _ag = _adf.copy()
-            _pend = [
-                {
-                    "IL": "" if pd.isna(r.get("IL")) else str(r.get("IL")),
-                    "A": "" if pd.isna(r.get("A")) else str(r.get("A")),
-                    "DA": "" if pd.isna(r.get("DA")) else str(r.get("DA")),
-                    "PA": None if r.get("PA") in (None, "") or pd.isna(r.get("PA")) else float(r.get("PA")),
-                }
-                for _, r in _ag.iterrows()
-            ]
-            _delf = [str(r.get("X")).strip().lower() in ("true", "1", "yes") for _, r in _ag.iterrows()]
-
-            # Clic en la celda IL: abre el resumen explícito del indicador
-            # (contenidos y transversales descritos, instrumento, agente
-            # evaluador, CC). Mismo mecanismo que el panel de tics de CON/CT.
-            if "_pick" in _ag.columns:
-                for _pi, _mark in enumerate(_ag["_pick"].tolist()):
-                    _mark = "" if pd.isna(_mark) else str(_mark)
-                    if _mark and _mark != ss.get("pa_pick_seen"):
-                        ss.pa_pick_seen = _mark
-                        ss.pa_act_dialog = {"row_idx": _pi}
-                        break
-
-            if ss.get("pa_act_dialog"):
-                _resumen_actividad_dialog(
-                    ss.pa_act_dialog["row_idx"], _pend, _il_info,
-                    ss.get("elementos", {}),
+        # ── PESTAÑA: Actividades por situación de aprendizaje
+        with _tab_pact:
+            if _tab_pact.open:
+                _lbl = {sa: f"{sa}: {d}" for sa, d in _sa_opts}
+                sa_sel = st.selectbox(
+                    "Situación de aprendizaje", [sa for sa, _ in _sa_opts],
+                    format_func=lambda s: _lbl.get(s, str(s)), key="pa_sa_sel",
                 )
+                _ils_sa = [r["IL"] for r in _il_state if r["SA"] == sa_sel]
 
-            def _real(r):
-                return bool(str(r.get("DA") or "").strip()) or r.get("PA") not in (None, "", 0)
+                _acts_sa = [a for a in ss.pa_acts if a.get("IL") in _ils_sa]
+                _acts_otras = [a for a in ss.pa_acts if a.get("IL") not in _ils_sa]
 
-            def _fold(pend):
-                return _acts_otras + [
-                    {"IL": p["IL"], "DA": p["DA"], "PA": p["PA"], "A": ""}
-                    for p in pend if str(p.get("IL") or "").strip() and _real(p)
+                # Cada IL de la SA debe tener al menos una fila: si no hay ninguna
+                # actividad para ese IL, se muestra una en blanco para rellenar
+                # (peso vacío = fila de plantilla que no se guarda hasta tocarla).
+                _con_act = {a["IL"] for a in _acts_sa}
+                _acts_sa_disp = _acts_sa + [
+                    {"IL": il, "A": "", "DA": "", "PA": None}
+                    for il in _ils_sa if il not in _con_act
                 ]
 
-            def _sig(rows):
-                return [(a.get("IL"), a.get("DA"), a.get("PA")) for a in rows]
+                st.markdown(
+                    f'<div class="mini-label">Actividades de los IL de esta SA '
+                    f"({', '.join(_ils_sa) or '—'}) · cada IL trae al menos una fila para rellenar "
+                    "· A (código) y PA%/FACTOR se recalculan al pulsar Actualizar</div>",
+                    unsafe_allow_html=True,
+                )
+                pc1, pc2, pc3, pc4 = st.columns([1.4, 1.3, 1.2, 3])
+                _add_il = pc1.selectbox("IL", _ils_sa or ["—"], key="pa_add_il", label_visibility="collapsed")
+                _pa_add = pc2.button("Añadir actividad", use_container_width=True, key="pa_add")
+                _pa_del = pc3.button("Borrar marcadas", use_container_width=True, key="pa_del")
+                _pa_upd = pc4.button("Actualizar", use_container_width=True, type="primary", key="pa_upd")
 
-            def _commit_acts(nuevas_sa):
-                ss.pa_acts = _fold(nuevas_sa)
-                ss.pa_nonce += 1
-                ss.pop("prog_out", None)
-                ss.pop("pa_docx", None)
-                st.rerun()
+                _rc = recompute_actividades(_acts_sa_disp, _pil_por_il)
+                _il_info = {r["IL"]: r for r in _il_state}
+                _adf = pd.DataFrame(
+                    [
+                        {"X": False, "IL": r["IL"], "A": r["A"], "DA": r["DA"],
+                         "PA": r["PA"],
+                         "PA%": None if r["PA%"] is None else r["PA%"] * 100,
+                         "FACTOR": r["FACTOR"],
+                         "IE": _il_info.get(r["IL"], {}).get("IE", ""),
+                         "_DIL": _il_info.get(r["IL"], {}).get("DIL", ""),
+                         "_pick": "",  # aviso de clic en IL (resumen del indicador)
+                         }
+                        for r in _rc
+                    ],
+                    columns=["X", "IL", "A", "DA", "PA", "PA%", "FACTOR", "IE", "_DIL", "_pick"],
+                )
+                _adf["X"] = _adf["X"].astype(bool)
+                _agb = GridOptionsBuilder.from_dataframe(_adf)
+                _agb.configure_default_column(editable=True, resizable=True, sortable=False, filter=False)
+                _agb.configure_column("X", headerName="", width=44, pinned="left",
+                                      cellRenderer="agCheckboxCellRenderer",
+                                      cellEditor="agCheckboxCellEditor", cellDataType="boolean")
+                _agb.configure_column(
+                    "IL", width=84, cellDataType="text", cellEditor="agSelectCellEditor",
+                    cellEditorParams={"values": _ils_sa},
+                    headerTooltip="Un clic: resumen del indicador · doble clic: cambiar de IL",
+                    tooltipValueGetter=JsCode(
+                        "function(p){return (p.data && p.data._DIL) ? p.data._DIL : '';}"
+                    ),
+                    onCellClicked=JsCode(
+                        # Un solo clic abre el resumen; si llega un segundo clic enseguida
+                        # (doble clic para reasignar el IL), se cancela y no se abre nada.
+                        "function(p){"
+                        "if (p.node.__dlgTimer) { clearTimeout(p.node.__dlgTimer); p.node.__dlgTimer = null; return; }"
+                        "p.node.__dlgTimer = setTimeout(function(){"
+                        "p.node.__dlgTimer = null;"
+                        "p.node.setDataValue('_pick', String(p.rowIndex) + '|' + Date.now());"
+                        "}, 280);"
+                        "}"
+                    ),
+                )
+                _agb.configure_column("A", editable=False, width=96)
+                _agb.configure_column("DA", headerName="Descripción", flex=1, minWidth=240,
+                                      cellDataType="text", tooltipField="DA")
+                _agb.configure_column("PA", headerName="Peso", width=80, cellDataType="number", type=["numericColumn"])
+                _agb.configure_column("PA%", editable=False, width=84,
+                                      valueFormatter=JsCode("function(p){return p.value==null?'':Number(p.value).toFixed(1)+' %'}"))
+                _agb.configure_column("FACTOR", editable=False, width=90,
+                                      valueFormatter=JsCode("function(p){return p.value==null?'':Number(p.value).toFixed(3)}"))
+                _agb.configure_column("IE", editable=False, width=140, tooltipField="IE")
+                _agb.configure_column("_DIL", hide=True)
+                _agb.configure_column("_pick", hide=True)
+                _agb.configure_grid_options(enableBrowserTooltips=True, rowHeight=30)
+                _agrid = AgGrid(
+                    _adf, gridOptions=_agb.build(), update_on=[("cellValueChanged", 300)],
+                    allow_unsafe_jscode=True, fit_columns_on_grid_load=False,
+                    custom_css=AGGRID_GRID_CSS,
+                    height=max(190, min(430, 95 + 33 * max(len(_adf), 1))),
+                    theme="balham", key=f"pa_acts_grid_{sa_sel}_{ss.pa_nonce}",
+                )
+                _ag = pd.DataFrame(_agrid["data"])
+                if _ag.empty or "IL" not in _ag.columns:
+                    _ag = _adf.copy()
+                _pend = [
+                    {
+                        "IL": "" if pd.isna(r.get("IL")) else str(r.get("IL")),
+                        "A": "" if pd.isna(r.get("A")) else str(r.get("A")),
+                        "DA": "" if pd.isna(r.get("DA")) else str(r.get("DA")),
+                        "PA": None if r.get("PA") in (None, "") or pd.isna(r.get("PA")) else float(r.get("PA")),
+                    }
+                    for _, r in _ag.iterrows()
+                ]
+                _delf = [str(r.get("X")).strip().lower() in ("true", "1", "yes") for _, r in _ag.iterrows()]
 
-            if _pa_add and _ils_sa:
-                _commit_acts(_pend + [{"IL": _add_il, "A": "", "DA": "", "PA": 1}])
-            elif _pa_del and any(_delf):
-                _commit_acts([p for p, d in zip(_pend, _delf) if not d])
-            elif _pa_upd:
-                _commit_acts(_pend)
-            else:
-                # Guarda en vivo lo que se va escribiendo (sin remontar la rejilla).
-                _folded = _fold(_pend)
-                if _sig(_folded) != _sig(ss.pa_acts):
-                    ss.pa_acts = _folded
+                # Clic en la celda IL: abre el resumen explícito del indicador
+                # (contenidos y transversales descritos, instrumento, agente
+                # evaluador, CC). Mismo mecanismo que el panel de tics de CON/CT.
+                if "_pick" in _ag.columns:
+                    for _pi, _mark in enumerate(_ag["_pick"].tolist()):
+                        _mark = "" if pd.isna(_mark) else str(_mark)
+                        if _mark and _mark != ss.get("pa_pick_seen"):
+                            ss.pa_pick_seen = _mark
+                            ss.pa_act_dialog = {"row_idx": _pi}
+                            break
+
+                if ss.get("pa_act_dialog"):
+                    _resumen_actividad_dialog(
+                        ss.pa_act_dialog["row_idx"], _pend, _il_info,
+                        ss.get("elementos", {}),
+                    )
+
+                def _real(r):
+                    return bool(str(r.get("DA") or "").strip()) or r.get("PA") not in (None, "", 0)
+
+                def _fold(pend):
+                    return _acts_otras + [
+                        {"IL": p["IL"], "DA": p["DA"], "PA": p["PA"], "A": ""}
+                        for p in pend if str(p.get("IL") or "").strip() and _real(p)
+                    ]
+
+                def _sig(rows):
+                    return [(a.get("IL"), a.get("DA"), a.get("PA")) for a in rows]
+
+                def _commit_acts(nuevas_sa):
+                    ss.pa_acts = _fold(nuevas_sa)
+                    ss.pa_nonce += 1
                     ss.pop("prog_out", None)
                     ss.pop("pa_docx", None)
+                    st.rerun()
 
-            # Campos de la programación de aula para esta SA. Se emparejan por
-            # título; una SA nueva sin columna se edita igual (la columna se crea
-            # al guardar). Las ediciones se guardan por título de SA.
-            import re as _re
+                if _pa_add and _ils_sa:
+                    _commit_acts(_pend + [{"IL": _add_il, "A": "", "DA": "", "PA": 1}])
+                elif _pa_del and any(_delf):
+                    _commit_acts([p for p, d in zip(_pend, _delf) if not d])
+                elif _pa_upd:
+                    _commit_acts(_pend)
+                else:
+                    # Guarda en vivo lo que se va escribiendo (sin remontar la rejilla).
+                    _folded = _fold(_pend)
+                    if _sig(_folded) != _sig(ss.pa_acts):
+                        ss.pa_acts = _folded
+                        ss.pop("prog_out", None)
+                        ss.pop("pa_docx", None)
 
-            _dsa_sel = next((d for n, d in _sa_opts if n == sa_sel), "")
-            _norm = lambda s: _re.sub(r"\s+", " ", str(s or "")).strip().lower()
-            _base = {}
-            for _e in ss.pa_sa_cols:
-                if _norm(_e.get("valores", {}).get("titulo")) == _norm(_dsa_sel):
-                    _base = _e["valores"]
-                    break
-            _nueva = not _base
-            _tri_sel = next((t for n, _d, t in _sa_datos() if n == sa_sel), "")
-            st.markdown("**Campos de la programación de aula para esta SA**")
-            if _nueva:
-                st.caption("Situación nueva: su columna en P_Aula_SA se creará al guardar.")
-            _cur = ss.pa_sa_edits.get(_dsa_sel, dict(_base))
-            # titulo y trimestre son automáticos (de la tabla de situaciones)
-            _cur["titulo"] = _dsa_sel
-            _cur["trimestre"] = _tri_sel
-            _cc = st.columns(2)
-            _cc[0].text_input("Título", value=_dsa_sel, disabled=True, key=f"pasa_tit_{sa_sel}")
-            _cc[1].text_input("Trimestre", value=_tri_sel or "—", disabled=True, key=f"pasa_tri_{sa_sel}")
-            st.caption("Título y trimestre se toman de la tabla de situaciones de aprendizaje.")
-            for campo in ss.pa_sa_campos:
-                if campo in ("titulo", "trimestre"):
-                    continue
-                _cur[campo] = st.text_area(
-                    _hum(campo), value=_cur.get(campo, ""),
-                    key=f"pasa_{sa_sel}_{campo}", height=70,
+                # Campos de la programación de aula para esta SA. Se emparejan por
+                # título; una SA nueva sin columna se edita igual (la columna se crea
+                # al guardar). Las ediciones se guardan por título de SA.
+                import re as _re
+
+                _dsa_sel = next((d for n, d in _sa_opts if n == sa_sel), "")
+                _norm = lambda s: _re.sub(r"\s+", " ", str(s or "")).strip().lower()
+                _base = {}
+                for _e in ss.pa_sa_cols:
+                    if _norm(_e.get("valores", {}).get("titulo")) == _norm(_dsa_sel):
+                        _base = _e["valores"]
+                        break
+                _nueva = not _base
+                _tri_sel = next((t for n, _d, t in _sa_datos() if n == sa_sel), "")
+                st.markdown("**Campos de la programación de aula para esta SA**")
+                if _nueva:
+                    st.caption("Situación nueva: su columna en P_Aula_SA se creará al guardar.")
+                _cur = ss.pa_sa_edits.get(_dsa_sel, dict(_base))
+                # titulo y trimestre son automáticos (de la tabla de situaciones)
+                _cur["titulo"] = _dsa_sel
+                _cur["trimestre"] = _tri_sel
+                _cc = st.columns(2)
+                _cc[0].text_input("Título", value=_dsa_sel, disabled=True, key=f"pasa_tit_{sa_sel}")
+                _cc[1].text_input("Trimestre", value=_tri_sel or "—", disabled=True, key=f"pasa_tri_{sa_sel}")
+                st.caption("Título y trimestre se toman de la tabla de situaciones de aprendizaje.")
+                for campo in ss.pa_sa_campos:
+                    if campo in ("titulo", "trimestre"):
+                        continue
+                    _cur[campo] = st.text_area(
+                        _hum(campo), value=_cur.get(campo, ""),
+                        key=f"pasa_{sa_sel}_{campo}", height=70,
+                    )
+                ss.pa_sa_edits[_dsa_sel] = _cur
+
+                # ── Resumen de actividades de esta SA (dinámica de INFORMES)
+                st.divider()
+                st.markdown(
+                    '<div class="mini-label">Resumen de actividades de esta situación de '
+                    "aprendizaje (valor de cada actividad sobre la programación y sobre la SA)</div>",
+                    unsafe_allow_html=True,
                 )
-            ss.pa_sa_edits[_dsa_sel] = _cur
-
-            # ── Resumen de actividades de esta SA (dinámica de INFORMES)
-            st.divider()
-            st.markdown(
-                '<div class="mini-label">Resumen de actividades de esta situación de '
-                "aprendizaje (valor de cada actividad sobre la programación y sobre la SA)</div>",
-                unsafe_allow_html=True,
-            )
-            _val = valores_actividades(ss.pa_acts, _il_state, _ce_p)
-            _val_sa = [a for a in _val if a.get("SA") == sa_sel]
-            _rheaders = ["A", "Descripción", "Valor s/ programación", "Valor s/ SA"]
-            _rrows = [
-                [
-                    a["A"], a["DA"],
-                    f"{a['valor_prog'] * 100:.2f}".replace(".", ",") + " %",
-                    f"{a['valor_sa'] * 100:.2f}".replace(".", ",") + " %",
+                _val = valores_actividades(ss.pa_acts, _il_state, _ce_p)
+                _val_sa = [a for a in _val if a.get("SA") == sa_sel]
+                _rheaders = ["A", "Descripción", "Valor s/ programación", "Valor s/ SA"]
+                _rrows = [
+                    [
+                        a["A"], a["DA"],
+                        f"{a['valor_prog'] * 100:.2f}".replace(".", ",") + " %",
+                        f"{a['valor_sa'] * 100:.2f}".replace(".", ",") + " %",
+                    ]
+                    for a in _val_sa
                 ]
-                for a in _val_sa
-            ]
-            if _rrows:
-                st.dataframe(pd.DataFrame(_rrows, columns=_rheaders),
-                            use_container_width=True, hide_index=True)
-                components.html(
-                    build_html_table_copy_html(
-                        render_word_table_html(_rheaders, _rrows),
-                        btn_id="pa-res-copy", fn="paResCopy", label="Copiar tabla (Word)",
-                    ),
-                    height=40,
-                )
-            else:
-                st.caption("Aún no hay actividades para esta situación de aprendizaje.")
+                if _rrows:
+                    st.dataframe(pd.DataFrame(_rrows, columns=_rheaders),
+                                use_container_width=True, hide_index=True)
+                    components.html(
+                        build_html_table_copy_html(
+                            render_word_table_html(_rheaders, _rrows),
+                            btn_id="pa-res-copy", fn="paResCopy", label="Copiar tabla (Word)",
+                        ),
+                        height=40,
+                    )
+                else:
+                    st.caption("Aún no hay actividades para esta situación de aprendizaje.")
+
