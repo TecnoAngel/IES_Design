@@ -300,7 +300,7 @@ components.html(
 # Navegación principal en la barra lateral (widget atado a session_state, así
 # que la página activa se conserva entre reruns). Dentro de cada página, los
 # bloques van en st.tabs con key + on_change="rerun" (también persistentes).
-PAGES = ["Diseño de la programación", "Contenidos", "Programación de aula"]
+PAGES = ["Diseño de la programación", "Contenidos", "Programación de aula", "Información a familias"]
 with st.sidebar:
     st.markdown(
         '<div class="side-brand"><div class="k">Programación didáctica</div>'
@@ -381,7 +381,15 @@ def _estado_coherencia():
     )
 
 
-if prog_excel is not None and st.session_state.get("prog_loaded_name") != prog_excel.name:
+def _huella_excel(f) -> str:
+    """Nombre + hash del contenido: un Excel retocado fuera de la app y vuelto
+    a subir con el mismo nombre también se recarga."""
+    import hashlib
+
+    return f"{f.name}|{hashlib.md5(f.getvalue()).hexdigest()}"
+
+
+if prog_excel is not None and st.session_state.get("prog_loaded_id") != _huella_excel(prog_excel):
     try:
         _sa = read_situaciones(prog_excel)
         st.session_state.sa_df = pd.DataFrame(
@@ -401,6 +409,7 @@ if prog_excel is not None and st.session_state.get("prog_loaded_name") != prog_e
         st.session_state.il_aux = _il["aux"]
         st.session_state.elementos = read_elementos_curriculares(prog_excel)
         st.session_state.prog_loaded_name = prog_excel.name
+        st.session_state.prog_loaded_id = _huella_excel(prog_excel)
         from tools.sellado import leer_sello
 
         st.session_state.prog_sello_cargado = leer_sello(prog_excel.getvalue())
@@ -414,11 +423,20 @@ if prog_excel is not None and st.session_state.get("prog_loaded_name") != prog_e
         st.session_state.pa_acts = _pae["actividades"]
         st.session_state.pa_sa_edits = {}
 
+        from tools.info_familias import read_info_familias
+
+        _fam = read_info_familias(prog_excel)
+        st.session_state.fam_campos = dict(_fam["campos"])
+        st.session_state.fam_comp = dict(_fam["competencias"])
+        st.session_state.fam_hoja = _fam["existe"]
+
         # al cambiar de archivo, se descartan los estados canónicos derivados
         for _k in (
             "prog_out", "prog_base", "sa_grid_rows", "ce_rows", "il_pending",
-            "pa_docx", "consist_seen",
+            "pa_docx", "consist_seen", "fam_docx",
         ):
+            st.session_state.pop(_k, None)
+        for _k in [k for k in list(st.session_state.keys()) if k.startswith("fam_w_")]:
             st.session_state.pop(_k, None)
         # ...y las fechas/horas por día/festivo local que hubiera tecleado en
         # la calculadora de sesiones (se recargan las guardadas en este
@@ -501,6 +519,15 @@ def _guardar_todo() -> bytes:
         )
         _pil = {r["IL"]: float(r["PIL"] or 0) for r in il_g}
         data = save_actividades(_B(data), ss.get("pa_acts", []), _pil)
+
+    # Hoja Info_Familias: solo si ya existía o se ha escrito algo (no se añade
+    # una hoja vacía a los Excel de quien no usa esta página).
+    if "fam_campos" in ss:
+        _fc, _fcomp = ss.fam_campos, ss.get("fam_comp", {})
+        if ss.get("fam_hoja") or any(v.strip() for v in list(_fc.values()) + list(_fcomp.values())):
+            from tools.info_familias import save_info_familias
+
+            data = save_info_familias(_B(data), _fc, _fcomp)
 
     from tools.sellado import sellar
 
@@ -2497,4 +2524,182 @@ elif page == "Programación de aula":
                     )
                 else:
                     st.caption("Aún no hay actividades para esta situación de aprendizaje.")
+
+# PÁGINA: INFORMACIÓN A FAMILIAS
+elif page == "Información a familias":
+    st.markdown(
+        '<div class="panel-card"><h3>Información a familias</h3>'
+        "<p>Documento para informar al alumnado y a las familias sobre la evaluación "
+        "(ORDEN EDU/424/2024, art. 12 · ORDEN EDU/425/2024, art. 10)<code>Info_Familias</code>.</p></div>",
+        unsafe_allow_html=True,
+    )
+
+    if prog_excel is None or "fam_campos" not in st.session_state:
+        st.info("Sube el Excel de programación en la barra de arriba para empezar.")
+    else:
+        from tools.info_familias import (
+            AGENTES,
+            CAMPOS,
+            campos_vacios,
+            datos_familias,
+            generar_docx,
+            tabla_sa_filas,
+        )
+        from tools.situaciones_informe import build_pie_png_simple, zebra_styler
+
+        ss = st.session_state
+
+        def _fam_sits():
+            src = ss.get("sa_grid_rows")
+            if src:
+                return [{k: r.get(k) for k in ("SA", "EV", "DSA", "HSA")} for r in src]
+            return [
+                {"SA": None if pd.isna(v[0]) else int(v[0]),
+                 "EV": None if pd.isna(v[1]) else v[1],
+                 "DSA": str(v[2] or ""), "HSA": None if pd.isna(v[3]) else v[3]}
+                for v in ss.sa_df.itertuples(index=False)
+            ]
+
+        _calc = datos_familias(
+            sits=_fam_sits(),
+            ce_list=ss.il_ce_list,
+            ce_ced=ss.il_ce_ced,
+            ce_p={r["CE"]: r["P"] for r in ss.get("ce_rows", [])} or dict(ss.get("il_ce_p", {})),
+            il_rows=il_recompute(ss.get("il_pending", ss.get("il_rows", [])), ss.il_ce_ced, ss.il_ce_list),
+            elementos=ss.get("elementos", {}),
+        )
+        _nums = [n for n, _p in _calc["competencias"]]
+
+        def _fam_sync():
+            """Pasa lo tecleado (widgets fam_w_*) al estado canónico e invalida
+            el Excel y el Word ya generados. Va como on_change: así, en el rerun,
+            la barra de arriba recalcula el Excel ya con el texto nuevo."""
+            for k, _l, _h in CAMPOS:
+                if f"fam_w_{k}" in ss:
+                    ss.fam_campos[k] = ss[f"fam_w_{k}"]
+            for n in _nums:
+                if f"fam_w_comp_{n}" in ss:
+                    ss.fam_comp[n] = ss[f"fam_w_comp_{n}"]
+            ss.pop("prog_out", None)
+            ss.pop("fam_docx", None)
+
+        # ── Generar documento
+        fg1, fg2 = st.columns([2.2, 1.6])
+        _fam_tpl = fg1.file_uploader("Plantilla Word (opcional)", type=["docx"], key="fam_tpl")
+        if fg2.button("Generar documento para familias", use_container_width=True,
+                      type="primary", key="fam_gen"):
+            try:
+                ss.fam_docx = generar_docx(
+                    datos_generales=dict(ss.get("pa_datos", {})),
+                    calculo=_calc,
+                    campos=ss.fam_campos,
+                    competencias=ss.fam_comp,
+                    template_source=_fam_tpl,
+                )
+                ss.fam_msg = ""
+            except Exception as exc:
+                ss.fam_msg = f"No se ha podido generar: {exc}"
+                ss.pop("fam_docx", None)
+        if ss.get("fam_msg"):
+            st.error(ss.fam_msg)
+        if ss.get("fam_docx"):
+            _dg = ss.get("pa_datos", {})
+            _nom = "_".join(
+                re.sub(r"[^\w]+", "", str(_dg.get(k, "")))
+                for k in ("materia", "curso", "grupo") if _dg.get(k)
+            )
+            fg2.download_button(
+                "Descargar documento (Word)", data=ss.fam_docx,
+                file_name=f"informacion_familias_{_nom or 'materia'}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
+            )
+
+        _faltan = campos_vacios(ss.fam_campos, ss.fam_comp, _nums)
+        if _faltan:
+            st.warning(
+                "Faltan por rellenar (en el documento saldrán como «pendiente de "
+                "completar»):\n\n- " + "\n- ".join(_faltan)
+            )
+
+        _tab_comp, _tab_cal, _tab_aten, _tab_prev = _pestanas(
+            "tabs_familias",
+            ["Competencias específicas", "Calificación y promoción",
+             "Atención individualizada", "Vista previa por SA"],
+        )
+        _AYUDA = {k: (lbl, h) for k, lbl, h in CAMPOS}
+
+        def _area(k, height=110):
+            lbl, h = _AYUDA[k]
+            st.text_area(lbl, value=ss.fam_campos.get(k, ""), help=h, height=height,
+                         key=f"fam_w_{k}", on_change=_fam_sync)
+
+        with _tab_comp:
+            if _tab_comp.open:
+                st.caption(
+                    "Una por cada competencia específica que aparece en los criterios "
+                    "(el primer número del CE: 2.4 → competencia 2). Copia su texto del "
+                    "currículo (Decreto 39/2022 ESO · Decreto 40/2022 Bachillerato)."
+                )
+                _peso = dict(_calc["competencias"])
+                for n in _nums:
+                    st.text_area(
+                        f"Competencia específica {n} · peso en la materia "
+                        + f"{_peso[n] * 100:.2f} %".replace(".", ","),
+                        value=ss.fam_comp.get(n, ""), height=80,
+                        key=f"fam_w_comp_{n}", on_change=_fam_sync,
+                    )
+
+        with _tab_cal:
+            if _tab_cal.open:
+                st.caption("Según la Propuesta Curricular del centro y la programación didáctica.")
+                for k in ("redondeo_criterios", "redondeo_materia", "competencias_clave",
+                          "promocion_titulacion"):
+                    _area(k)
+
+        with _tab_aten:
+            if _tab_aten.open:
+                st.warning(
+                    "Este documento va a **todas** las familias: describe las medidas en "
+                    "general, sin datos de alumnos concretos (lo de «Datos generales» de la "
+                    "programación de aula **no** se usa aquí)."
+                )
+                for k in ("plan_recuperacion", "plan_refuerzo", "apoyos", "adaptaciones"):
+                    _area(k, height=90)
+
+        with _tab_prev:
+            if _tab_prev.open:
+                _sas = _calc["situaciones"]
+                if not _sas:
+                    st.info("No hay situaciones de aprendizaje.")
+                else:
+                    _by_n = {s["numero"]: s for s in _sas}
+                    _sel = st.selectbox(
+                        "Situación de aprendizaje", list(_by_n),
+                        format_func=lambda n: f"{n}: {_by_n[n]['titulo']}", key="fam_prev_sa",
+                    )
+                    _s = _by_n[_sel]
+                    st.markdown(
+                        f"**{_s['EV'] or '—'}ª evaluación** · {float(_s['HSA'] or 0):g} h "
+                        f"({_s['pct_h'] * 100:.2f} % de las horas) · peso en la calificación "
+                        f"de la materia: **{_s['peso'] * 100:.2f} %**".replace(".", ",")
+                    )
+                    _h, _r = tabla_sa_filas(_s)
+                    pv1, pv2 = st.columns([3.2, 1.6], gap="medium")
+                    with pv1:
+                        if _r:
+                            st.dataframe(zebra_styler(pd.DataFrame(_r, columns=_h)),
+                                         use_container_width=True, hide_index=True)
+                            if _s["agentes"]:
+                                st.caption("Agente evaluador: " + "; ".join(
+                                    f"{a} = {AGENTES.get(a, a)}" for a in _s["agentes"]))
+                        else:
+                            st.caption("Esta SA no tiene indicadores de logro asignados.")
+                    with pv2:
+                        if _s["instrumentos"]:
+                            st.image(build_pie_png_simple(
+                                [k for k, _ in _s["instrumentos"]],
+                                [v for _, v in _s["instrumentos"]],
+                                titulo=f"Instrumentos · SA {_s['numero']}", leyenda="Instrumento",
+                            ), use_container_width=True)
 
