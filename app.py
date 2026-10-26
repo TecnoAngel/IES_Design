@@ -466,6 +466,13 @@ with st.container(border=True):
                     _cargar_estado(leer_proyecto(proy_file.getvalue()), proy_file.name.rsplit(".", 1)[0])
                 except Exception as exc:
                     st.error(f"No se ha podido abrir el proyecto: {exc}")
+        # Una sesión abierta con la versión anterior (el servidor recarga el
+        # código sin perder la sesión, y el mismo archivo no se vuelve a leer)
+        # puede traer actividades de un solo IL, sin «id»: se convierten aquí.
+        if _hay_proyecto() and any("id" not in a for a in st.session_state.get("pa_acts", [])):
+            st.session_state.pa_acts = desde_formato_antiguo(
+                st.session_state.pa_acts, st.session_state.get("il_rows", [])
+            )
         if _hay_proyecto():
             _m = st.session_state.proy_materia
             st.caption(
