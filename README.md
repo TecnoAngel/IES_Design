@@ -1,14 +1,20 @@
 # IES Diseño
 
 Aplicación Streamlit para diseñar y revisar la programación didáctica (LOMLOE) y
-la programación de aula a partir del **Excel de programación** del departamento,
-sin romper su modelo de Power Pivot ni sus tablas dinámicas.
+la programación de aula sobre el **currículo de Castilla y León** (ESO,
+Diversificación y Bachillerato).
+
+- El currículo (criterios, competencias específicas, contenidos, transversales,
+  descriptores, instrumentos…) está en `curriculo.db`, en este repositorio, y la
+  app lo descarga sola.
+- Cada programación es un **proyecto** (`.sqlite`) que se abre y se guarda desde
+  la app.
 
 ## Requisitos
 
 - Python 3.10+
-- Windows (probado ahí; el Excel se abre después con Microsoft Excel)
-- Chrome o Edge recomendados (permiten elegir dónde guardar el Excel, incluso
+- Windows (probado ahí)
+- Chrome o Edge recomendados (permiten elegir dónde guardar el proyecto, incluso
   sobrescribiendo el original; en Firefox/Safari se descarga sin más)
 
 ## Instalación
@@ -29,15 +35,16 @@ o `run_app.bat` (usa el python del `.venv` y el puerto 8502).
 
 ## Uso
 
-1. Sube el Excel de programación (`.xlsx`) en la barra de arriba.
+1. En la barra de arriba, **Abrir proyecto** (sube tu `.sqlite`) o **Nuevo
+   proyecto** (elige etapa, curso y materia y pulsa *Crear*).
 2. Edita en las páginas de la barra lateral.
-3. Pulsa **Guardar Excel**: se genera el mismo libro con tus cambios y un
-   prefijo `AAAAMMDD_HHMM_` en el nombre. Dentro del archivo queda también un
-   sello oculto con la fecha y la hora del guardado.
+3. Pulsa **Guardar proyecto**: se guarda con un prefijo `AAAAMMDD_HHMM_` en el
+   nombre. Dentro del archivo queda también la fecha y la hora del guardado.
 
-Antes de guardar o generar el Word se revisa la coherencia entre tablas (la
-tabla de situaciones de aprendizaje manda). Si algo no cuadra, puedes parar y
-arreglarlo en Excel o regenerar automáticamente lo que falte.
+Los códigos de la programación (criterios, contenidos, transversales,
+descriptores) tienen que existir en el currículo de la materia. Antes de guardar
+o generar el Word se revisa la coherencia; si algo no cuadra, puedes revisarlo a
+mano o aplicar los arreglos automáticos.
 
 ## Funcionalidades
 
@@ -49,11 +56,12 @@ arreglarlo en Excel o regenerar automáticamente lo que falte.
 - **Sesiones por evaluación**: descarga el calendario escolar oficial de
   Castilla y León y cuenta, día a día, los días lectivos y las sesiones de cada
   evaluación. Las fechas, las sesiones por día y el festivo local se guardan en
-  el Excel. El resultado se puede volcar a las horas previstas.
-- **Criterios de evaluación**: edición del peso P de cada criterio (%CE automático).
+  el proyecto. El resultado se puede volcar a las horas previstas.
+- **Criterios de evaluación**: los de la materia; edición del peso P de cada
+  criterio (%CE automático).
 - **Indicadores de logro**: alta y baja por criterio, numeración automática, PIL%,
-  contenidos y transversales marcados con ticks, instrumento, calificación,
-  agente y SA en desplegables. Resumen por criterio copiable a Word.
+  descriptores operativos, contenidos y transversales marcados con ticks,
+  instrumento, calificación, agente y SA en desplegables. Resumen por criterio copiable a Word.
 - **Ajuste de pesos**: fijas el % objetivo de cada instrumento de evaluación y,
   con el reparto horario, se sugieren P y PIL (ajuste IPF). Tú decides si los cargas.
 - **Distribución CE × SA**: matriz de pesos por criterio y situación,
@@ -63,8 +71,8 @@ arreglarlo en Excel o regenerar automáticamente lo que falte.
 
 ### Contenidos
 
-Contenidos de la materia y transversales de la hoja `LOMLOE`, marcados en verde
-si ya están asignados a algún indicador y en rojo si no.
+Contenidos de la materia (con su bloque) y transversales de la etapa, marcados
+en verde si ya están asignados a algún indicador y en rojo si no.
 
 ### Programación de aula
 
@@ -90,20 +98,21 @@ Genera un Word para informar al alumnado y a las familias sobre la evaluación
   calificación, agente, contenidos y transversales, y la tarta de instrumentos de
   esa SA.
 
-Los textos que no están en el resto del Excel (competencias específicas,
-redondeo, promoción, medidas…) se rellenan en la app y se guardan en la hoja
-`Info_Familias`. Esa hoja se crea sola al guardar, solo si has escrito algo.
+Las competencias específicas salen del currículo. Los textos que no están en la
+programación (redondeo, promoción, medidas…) se rellenan en la app y se guardan
+en el proyecto.
 Plantilla por defecto: `templates/informacion_familias_template.docx`; para
 regenerarla, ejecuta `python -m tools.plantilla_familias`.
 
 ## Nota técnica
 
-`openpyxl` / `pandas` **no** sirven para *escribir* estos libros: al guardar
-eliminan el modelo de datos, las dinámicas y las segmentaciones (el archivo pasa
-de ~690 KB a ~60 KB). Para leer sí se usan sin problema. La escritura se hace en
-los módulos de `tools/` modificando directamente el XML de las partes afectadas
-dentro del ZIP. El resto del archivo se copia tal cual y se fuerza el recálculo al
-abrirlo en Excel.
+- `curriculo.db` se descarga de este repositorio (rama `master`) y se guarda en
+  `%LOCALAPPDATA%\IES_Diseno\`. Sin conexión se usa la última copia descargada o,
+  si no hay, la del propio repositorio.
+- El proyecto es una base SQLite con solo lo del docente; la materia apunta al
+  currículo por su identificador.
+- Hasta octubre de 2026 la app trabajaba sobre un Excel de programación con
+  Power Pivot. Ya no se usa.
 
-Más detalle interno (estructura del Excel, decisiones, trampas conocidas,
+Más detalle interno (modelo de datos, decisiones, trampas conocidas,
 bitácora): ver [MEMORIA.md](MEMORIA.md).

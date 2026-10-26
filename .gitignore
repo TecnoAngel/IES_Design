@@ -31,3 +31,6 @@ templates/*
 # Material de consulta suelto en la raíz (presentaciones de inspección, etc.)
 /*.ppt
 /*.pptx
+
+# Proyectos de docentes (.sqlite): datos reales, no se suben
+/*.sqlite

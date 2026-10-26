@@ -34,7 +34,7 @@ st.set_page_config(page_title="IES Diseño", page_icon=_favicon(), layout="wide"
 import importlib.util
 
 _faltan = [
-    m for m in ("matplotlib", "openpyxl", "st_aggrid", "docxtpl")
+    m for m in ("matplotlib", "st_aggrid", "docxtpl")
     if importlib.util.find_spec(m) is None
 ]
 if _faltan:
@@ -314,27 +314,162 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
-# ── Barra global del Excel de programación: cargar / descargar desde cualquier
-#    pestaña. La descarga se rellena luego (dl_box), cuando la pestaña activa ya
-#    ha calculado los cambios.
-from tools.indicadores_logro import read_elementos_curriculares, read_indicadores
+# ── Currículo común (curriculo.db, se descarga de GitHub) y proyecto del
+#    docente (.sqlite): barra global para abrir / crear / guardar desde
+#    cualquier página. La descarga se rellena luego (dl_box), cuando la página
+#    activa ya ha recogido los cambios.
+from tools import curriculo as cur
 from tools.indicadores_logro import recompute as il_recompute
-from tools.situaciones_aprendizaje import TRIMESTRES, read_situaciones
+from tools.info_familias import CAMPOS_KEYS as FAM_CAMPOS
+from tools.proyecto import DATOS_CAMPOS, SA_CAMPOS, estado_vacio, guardar_proyecto, leer_proyecto
+from tools.situaciones_aprendizaje import TRIMESTRES
 
 SA_COLS = ["SA", "EV", "DSA", "HSA"]
 IL_COLS = ["CE", "CED", "IL", "PIL", "PIL%", "DIL", "DO", "CON", "CT", "IE", "CC", "AE", "SA"]
 
+
+@st.cache_resource(ttl=6 * 3600, show_spinner="Descargando el currículo…")
+def _curriculo_db():
+    return cur.obtener_curriculo()
+
+
+@st.cache_data(show_spinner=False)
+def _materia_curriculo(db: str, materia_id: str) -> dict:
+    # La ruta de la caché no cambia al volver a descargar: se limpia a mano
+    # cuando cambia el origen (ver abajo).
+    return cur.cargar_materia(db, materia_id)
+
+
+try:
+    CUR_DB, CUR_ORIGEN = _curriculo_db()
+except Exception as exc:
+    st.error(f"No se puede cargar el currículo (curriculo.db): {exc}")
+    st.stop()
+if st.session_state.get("_cur_origen") != CUR_ORIGEN:
+    _materia_curriculo.clear()
+    st.session_state._cur_origen = CUR_ORIGEN
+CUR_DB = str(CUR_DB)
+
+with st.sidebar:
+    st.caption(f"Currículo: {CUR_ORIGEN}")
+
+
+def _hay_proyecto() -> bool:
+    return "proy_materia" in st.session_state
+
+
+def _cargar_estado(estado: dict, nombre: str) -> None:
+    """Pasa a la sesión un proyecto (leído del .sqlite o recién creado) junto
+    con el currículo de su materia, y descarta todo lo derivado del anterior."""
+    ss = st.session_state
+    curm = _materia_curriculo(CUR_DB, estado["materia_id"])
+    ce_list = curm["ce_list"]
+
+    ss.cur = curm
+    ss.proy_materia = curm["materia"]
+    ss.proy_nombre = nombre
+    ss.prog_sello_cargado = estado.get("sello", "")
+
+    ss.sa_df = pd.DataFrame(
+        [[s["SA"], s["EV"], s["DSA"], s["HSA"]] for s in estado["situaciones"]], columns=SA_COLS
+    )
+    ss.sa_previstas = {t: float(estado["horas_previstas"].get(t, 0.0) or 0) for t in TRIMESTRES}
+    ss.sa_fechas_trimestre = dict(estado["fechas_trimestre"])
+    ss.sa_horas_dia = list(estado["horas_dia"])
+    ss.sa_festivo_local = estado["festivo_local"]
+
+    # Los criterios son los de la materia en el currículo: un peso de un CE
+    # que ya no existe se descarta, y un CE nuevo empieza con P = 0.
+    ss.il_ce_list = ce_list
+    ss.il_ce_ced = curm["ce_ced"]
+    ss.il_ce_p = {ce: float(estado["ce_p"].get(ce, 0) or 0) for ce in ce_list}
+    ss.il_rows = il_recompute(estado["il_rows"], curm["ce_ced"], ce_list)
+    ss.il_aux = curm["aux"]
+    ss.elementos = curm["elementos"]
+
+    ss.pa_datos = {k: estado["pa_datos"].get(k, "") for k in DATOS_CAMPOS}
+    ss.pa_campos_datos = list(DATOS_CAMPOS)
+    ss.pa_sa_campos = list(SA_CAMPOS)
+    ss.pa_sa_cols = estado["pa_sa_cols"]
+    ss.pa_acts = estado["pa_acts"]
+    ss.pa_sa_edits = {}
+
+    ss.fam_campos = {k: estado["fam_campos"].get(k, "") for k in FAM_CAMPOS}
+
+    # al cambiar de proyecto, se descartan los estados canónicos derivados
+    for _k in (
+        "prog_out", "sa_grid_rows", "ce_rows", "il_pending", "pa_docx",
+        "consist_seen", "fam_docx", "prog_msg", "ipf_obj_df",
+    ):
+        ss.pop(_k, None)
+    # ...los widgets con estado propio (familias, campos de aula, datos
+    # generales) y las fechas/horas por día/festivo local que hubiera
+    # tecleado en la calculadora de sesiones (se recargan las guardadas en
+    # este proyecto, o se vuelve a proponer el reparto automático si no tiene).
+    for _k in [
+        k for k in list(ss.keys())
+        if k.startswith(("fam_w_", "pad_", "pasa_", "ses_tr", "ses_d"))
+        or k in ("ses_loc", "ses_loc_on")
+    ]:
+        ss.pop(_k, None)
+
+
+def _huella(f) -> str:
+    """Nombre + hash del contenido: un proyecto con el mismo nombre pero
+    distinto contenido también se recarga."""
+    import hashlib
+
+    return f"{f.name}|{hashlib.md5(f.getvalue()).hexdigest()}"
+
+
 with st.container(border=True):
     ubar1, ubar2 = st.columns([3, 2])
     with ubar1:
-        prog_excel = st.file_uploader(
-            "Excel de programación (.xlsx)",
-            type=["xlsx", "xlsm"],
-            key="prog_excel_uploader",
-            label_visibility="collapsed",
+        _modo = st.segmented_control(
+            "Proyecto", ["Abrir proyecto", "Nuevo proyecto"], default="Abrir proyecto",
+            key="proy_modo", label_visibility="collapsed",
         )
-        if st.session_state.get("prog_sello_cargado"):
-            st.caption(f"Versión cargada: {st.session_state.prog_sello_cargado}")
+        if _modo == "Nuevo proyecto":
+            n1, n2, n3, n4 = st.columns([1.5, 0.8, 2.6, 0.9])
+            _etapa = n1.selectbox(
+                "Etapa", cur.ETAPAS, format_func=lambda e: cur.ETAPA_NOMBRE[e], key="nuevo_etapa"
+            )
+            _curso = n2.selectbox(
+                "Curso", cur.cursos(CUR_DB, _etapa), format_func=lambda c: f"{c}º", key="nuevo_curso"
+            )
+            _mats = {m["id"]: m["nombre"] for m in cur.materias(CUR_DB, _etapa, _curso)}
+            _mid = n3.selectbox(
+                "Materia", list(_mats), format_func=lambda i: _mats.get(i, i), key="nuevo_materia"
+            )
+            n4.markdown("<div style='height:1.75rem'></div>", unsafe_allow_html=True)
+            if n4.button("Crear", type="primary", use_container_width=True, key="nuevo_crear",
+                         disabled=not _mid):
+                _cargar_estado(estado_vacio(_materia_curriculo(CUR_DB, _mid)), _mid)
+                # Un proyecto vacío aún no tiene SA ni indicadores: no se avisa
+                # de coherencia hasta que se vuelva a abrir (o al generar Word).
+                st.session_state.consist_seen = True
+                st.rerun()
+        else:
+            proy_file = st.file_uploader(
+                "Proyecto (.sqlite)", type=["sqlite", "db"], key="proy_uploader",
+                label_visibility="collapsed",
+            )
+            # Solo se carga un archivo subido NUEVO (si no, al crear un proyecto
+            # nuevo con un archivo aún en el uploader, lo volvería a pisar).
+            if proy_file is not None and st.session_state.get("proy_file_seen") != _huella(proy_file):
+                st.session_state.proy_file_seen = _huella(proy_file)
+                try:
+                    _cargar_estado(leer_proyecto(proy_file.getvalue()), proy_file.name.rsplit(".", 1)[0])
+                except Exception as exc:
+                    st.error(f"No se ha podido abrir el proyecto: {exc}")
+        if _hay_proyecto():
+            _m = st.session_state.proy_materia
+            st.caption(
+                f"**{_m['nombre']}** · {_m['curso']}º {cur.ETAPA_NOMBRE.get(_m['etapa_app'], _m['etapa'])}"
+                f" · {_m.get('normativa') or ''}"
+                + (f" · guardado {st.session_state.prog_sello_cargado}"
+                   if st.session_state.get("prog_sello_cargado") else "")
+            )
     dl_box = ubar2.container()
 
 def _trimestre_txt(ev):
@@ -345,28 +480,43 @@ def _trimestre_txt(ev):
     return f"{n}º trimestre" if n in (1, 2, 3) else ""
 
 
-def _sa_datos():
-    """(nº, descripción, trimestre) de cada SA, ordenados por nº. Del estado
-    editado si lo hay, si no del Excel cargado."""
+def _sa_filas():
+    """Filas de la tabla de situaciones: del estado editado si lo hay, si no
+    las del proyecto cargado."""
     ss = st.session_state
     rows = ss.get("sa_grid_rows")
-    if not rows and "sa_df" in ss:
+    if rows is None and "sa_df" in ss:
         rows = [
             {
                 "SA": None if pd.isna(v[0]) else int(v[0]),
-                "EV": None if pd.isna(v[1]) else v[1],
+                "EV": None if pd.isna(v[1]) else int(v[1]),
                 "DSA": str(v[2] or ""),
+                "HSA": None if pd.isna(v[3]) else v[3],
             }
             for v in ss.sa_df.itertuples(index=False)
         ]
+    return [{k: r.get(k) for k in SA_COLS} for r in (rows or [])]
+
+
+def _sa_datos():
+    """(nº, descripción, trimestre) de cada SA, ordenados por nº."""
     return sorted(
         (r["SA"], r["DSA"], _trimestre_txt(r.get("EV")))
-        for r in (rows or []) if r.get("SA") is not None
+        for r in _sa_filas() if r.get("SA") is not None
     )
 
 
 def _sa_pares():
     return [(n, d) for n, d, _t in _sa_datos()]
+
+
+def _codigos_curriculo() -> dict[str, set[str]]:
+    el = st.session_state.get("elementos", {})
+    return {
+        "CON": {c["cod"].replace(" ", "") for c in el.get("contenidos", [])},
+        "CT": {c["num"] for c in el.get("transversales", [])},
+        "DO": {c["cod"] for c in el.get("descriptores", [])},
+    }
 
 
 def _estado_coherencia():
@@ -377,166 +527,59 @@ def _estado_coherencia():
         ss.get("il_ce_list", []),
         ss.get("il_rows", []),
         ss.get("pa_acts", []),
-        ss.get("pa_sa_cols", []),
+        _codigos_curriculo(),
     )
 
 
-def _huella_excel(f) -> str:
-    """Nombre + hash del contenido: un Excel retocado fuera de la app y vuelto
-    a subir con el mismo nombre también se recarga."""
-    import hashlib
-
-    return f"{f.name}|{hashlib.md5(f.getvalue()).hexdigest()}"
-
-
-if prog_excel is not None and st.session_state.get("prog_loaded_id") != _huella_excel(prog_excel):
-    try:
-        _sa = read_situaciones(prog_excel)
-        st.session_state.sa_df = pd.DataFrame(
-            [[s.sa, s.ev, s.dsa, s.hsa] for s in _sa.situaciones], columns=SA_COLS
-        )
-        st.session_state.sa_previstas = {
-            t: float(_sa.horas_previstas.get(t, 0.0)) for t in TRIMESTRES
-        }
-        st.session_state.sa_fechas_trimestre = dict(_sa.fechas_trimestre)
-        st.session_state.sa_horas_dia = list(_sa.horas_dia)
-        st.session_state.sa_festivo_local = _sa.festivo_local
-        _il = read_indicadores(prog_excel)
-        st.session_state.il_rows = il_recompute(_il["rows"], _il["ce_ced"], _il["ce_list"])
-        st.session_state.il_ce_list = _il["ce_list"]
-        st.session_state.il_ce_ced = _il["ce_ced"]
-        st.session_state.il_ce_p = _il["ce_p"]
-        st.session_state.il_aux = _il["aux"]
-        st.session_state.elementos = read_elementos_curriculares(prog_excel)
-        st.session_state.prog_loaded_name = prog_excel.name
-        st.session_state.prog_loaded_id = _huella_excel(prog_excel)
-        from tools.sellado import leer_sello
-
-        st.session_state.prog_sello_cargado = leer_sello(prog_excel.getvalue())
-        from tools.programacion_aula_editor import read_prog_aula
-
-        _pae = read_prog_aula(prog_excel)
-        st.session_state.pa_datos = dict(_pae["datos"])
-        st.session_state.pa_campos_datos = [k for k, _ in _pae["datos"]]
-        st.session_state.pa_sa_campos = _pae["sa_campos"]
-        st.session_state.pa_sa_cols = _pae["sa_cols"]
-        st.session_state.pa_acts = _pae["actividades"]
-        st.session_state.pa_sa_edits = {}
-
-        from tools.info_familias import read_info_familias
-
-        _fam = read_info_familias(prog_excel)
-        st.session_state.fam_campos = dict(_fam["campos"])
-        st.session_state.fam_comp = dict(_fam["competencias"])
-        st.session_state.fam_hoja = _fam["existe"]
-
-        # al cambiar de archivo, se descartan los estados canónicos derivados
-        for _k in (
-            "prog_out", "prog_base", "sa_grid_rows", "ce_rows", "il_pending",
-            "pa_docx", "consist_seen", "fam_docx",
-        ):
-            st.session_state.pop(_k, None)
-        for _k in [k for k in list(st.session_state.keys()) if k.startswith("fam_w_")]:
-            st.session_state.pop(_k, None)
-        # ...y las fechas/horas por día/festivo local que hubiera tecleado en
-        # la calculadora de sesiones (se recargan las guardadas en este
-        # Excel, o se vuelve a proponer el reparto automático si no tiene).
-        for _k in [
-            k for k in list(st.session_state.keys())
-            if k.startswith("ses_tr") or k.startswith("ses_d") or k in ("ses_loc", "ses_loc_on")
-        ]:
-            st.session_state.pop(_k, None)
-    except Exception as exc:
-        st.error(f"No se ha podido leer el Excel: {exc}")
-
-
-def _guardar_todo() -> bytes:
-    """Aplica sobre el Excel subido todos los cambios en sesión (situaciones,
-    criterios, indicadores y programación de aula) y devuelve los bytes."""
-    from io import BytesIO as _B
-
-    from tools.indicadores_logro import save_criterios, save_indicadores
-    from tools.situaciones_aprendizaje import Situacion, save_situaciones
-
+def _estado_actual() -> dict:
+    """Todo lo que hay en sesión, en el formato de `tools.proyecto`."""
     ss = st.session_state
-    data = ss.get("prog_base") or prog_excel.getvalue()
-
-    if "sa_grid_rows" in ss:
-        sits_g = [
-            Situacion(sa=r["SA"], ev=r["EV"], dsa=r["DSA"], hsa=r["HSA"])
-            for r in ss.sa_grid_rows
-        ]
-        prev_g = {
+    _fechas_prev = ss.get("sa_fechas_trimestre", {})
+    _horas_prev = ss.get("sa_horas_dia") or [None] * 5
+    il_g = il_recompute(ss.get("il_pending", ss.get("il_rows", [])), ss.il_ce_ced, ss.il_ce_list)
+    return {
+        "situaciones": _sa_filas(),
+        "horas_previstas": {
             t: float(ss.get(f"sa_prev_{t}", ss.get("sa_previstas", {}).get(t, 0.0)))
             for t in TRIMESTRES
-        }
-        # Fechas de cada evaluación (calculadora de sesiones): lo que haya en
-        # los selectores si se ha abierto esa calculadora en esta sesión, si no
-        # lo que ya hubiera guardado el Excel (para no borrarlo sin querer).
-        _fechas_prev = ss.get("sa_fechas_trimestre", {})
-        fechas_g = {
+        },
+        # Fechas de cada evaluación, horas por día y festivo local
+        # (calculadora de sesiones): lo que haya en sus selectores si se ha
+        # abierto esta sesión, si no lo que ya tuviera guardado el proyecto.
+        # El festivo se limpia explícitamente si se desmarca la casilla.
+        "fechas_trimestre": {
             t: (
                 ss.get(f"ses_tr{t - 1}a", _fechas_prev.get(t, (None, None))[0]),
                 ss.get(f"ses_tr{t - 1}b", _fechas_prev.get(t, (None, None))[1]),
             )
             for t in TRIMESTRES
-        }
-        # Horas por día y festivo local: mismo criterio — lo tecleado esta
-        # sesión si se abrió la calculadora, si no lo que ya hubiera guardado
-        # el Excel. El festivo se limpia explícitamente si se desmarca la
-        # casilla (a diferencia de las horas, que no tienen "sin valor").
-        _horas_prev = ss.get("sa_horas_dia") or [None] * 5
-        horas_dia_g = [ss.get(f"ses_d{i}", _horas_prev[i]) for i in range(5)]
-        festivo_local_g = (
+        },
+        "horas_dia": [ss.get(f"ses_d{i}", _horas_prev[i]) for i in range(5)],
+        "festivo_local": (
             (ss.get("ses_loc") if ss.get("ses_loc_on") else None)
             if "ses_loc_on" in ss
             else ss.get("sa_festivo_local")
-        )
-        data = save_situaciones(_B(data), sits_g, prev_g, fechas_g, horas_dia_g, festivo_local_g)
+        ),
+        "ce_p": {r["CE"]: r["P"] for r in ss.get("ce_rows", [])} or dict(ss.il_ce_p),
+        "il_rows": il_g,
+        "pa_datos": dict(ss.get("pa_datos", {})),
+        "pa_sa_cols": ss.get("pa_sa_cols", []),
+        "pa_acts": ss.get("pa_acts", []),
+        "fam_campos": dict(ss.get("fam_campos", {})),
+    }
 
-    il_g = il_recompute(
-        ss.get("il_pending", ss.get("il_rows", [])), ss.il_ce_ced, ss.il_ce_list
+
+def _guardar_todo() -> bytes:
+    """Bytes del proyecto (.sqlite) con todos los cambios en sesión."""
+    ss = st.session_state
+    data, ss.prog_sello = guardar_proyecto(
+        _estado_actual(), ss.proy_materia, pa_sa_edits=ss.get("pa_sa_edits", {})
     )
-    data = save_indicadores(_B(data), il_g, ss.il_ce_ced, ss.il_ce_list)
-
-    ce_p_g = {r["CE"]: r["P"] for r in ss.get("ce_rows", [])} or dict(ss.il_ce_p)
-    data = save_criterios(_B(data), ce_p_g, ss.il_ce_list)
-
-    if "pa_datos" in ss:
-        from tools.consistencia import regenerar_p_aula_sa
-        from tools.programacion_aula_editor import save_actividades, save_datos_generales
-
-        data = save_datos_generales(_B(data), dict(ss.pa_datos))
-        # P_Aula_SA se reconstruye siempre desde la lista de SA actual: las SA
-        # nuevas obtienen columna, y titulo/trimestre se pisan con lo de la tabla
-        # de situaciones. El resto: ediciones de sesión (por título) o lo previo.
-        _sad = _sa_datos()
-        data = regenerar_p_aula_sa(
-            _B(data),
-            [d for _, d, _t in _sad],
-            edits=ss.get("pa_sa_edits", {}),
-            sa_trimestres=[t for _, _d, t in _sad],
-        )
-        _pil = {r["IL"]: float(r["PIL"] or 0) for r in il_g}
-        data = save_actividades(_B(data), ss.get("pa_acts", []), _pil)
-
-    # Hoja Info_Familias: solo si ya existía o se ha escrito algo (no se añade
-    # una hoja vacía a los Excel de quien no usa esta página).
-    if "fam_campos" in ss:
-        _fc, _fcomp = ss.fam_campos, ss.get("fam_comp", {})
-        if ss.get("fam_hoja") or any(v.strip() for v in list(_fc.values()) + list(_fcomp.values())):
-            from tools.info_familias import save_info_familias
-
-            data = save_info_familias(_B(data), _fc, _fcomp)
-
-    from tools.sellado import sellar
-
-    data, ss.prog_sello = sellar(data)
     return data
 
 
 def _invalidar_prog_out() -> None:
-    """Fuerza a que el próximo render recalcule el Excel (ver dl_box): lo usan
+    """Fuerza a que el próximo render recalcule el proyecto (ver dl_box): lo usan
     como `on_change` los campos de la calculadora de sesiones (horas por día,
     fechas de evaluación, festivo local) porque, al ser simples widgets sin
     un botón «Actualizar» propio, nada más los invalidaría — y con el cálculo
@@ -553,8 +596,12 @@ def _nombre_sin_sello(nombre: str) -> str:
     return re.sub(r"^(?:\d{8}_\d{4}_)+", "", nombre)
 
 
-def _guardar_excel_html(data: bytes, base: str, *, height: int = 74) -> None:
-    """Un único botón «Guardar Excel»: si el navegador soporta elegir dónde
+def _guardar_archivo_html(
+    data: bytes, base: str, *, ext: str = ".sqlite", etiqueta: str = "Guardar proyecto",
+    descripcion: str = "Proyecto de IES Diseño", mime: str = "application/vnd.sqlite3",
+    height: int = 74,
+) -> None:
+    """Un único botón «Guardar proyecto»: si el navegador soporta elegir dónde
     guardar (Chrome/Edge, la File System Access API) abre el explorador de
     archivos del sistema para que lo guardes donde quieras, incluso
     sobrescribiendo el original; si no (Firefox, Safari…) hace una descarga
@@ -573,12 +620,16 @@ def _guardar_excel_html(data: bytes, base: str, *, height: int = 74) -> None:
     eso el sello de fecha/hora del NOMBRE se calcula aquí, en JS, en el propio
     instante del clic (`base` ya viene sin sellos previos); así cada guardado
     propone un nombre con la hora real de ese guardado, no la de cuando se
-    generó el Excel. El sello oculto DENTRO del archivo (para Power Pivot) es
-    otra cosa y sigue siendo el de la última vez que se generó el Excel."""
+    generó el archivo. El sello DENTRO del proyecto (``meta.actualizado``) es
+    otra cosa y sigue siendo el de la última vez que se generó."""
     import base64
+    import html
     import json
 
-    payload = json.dumps({"b64": base64.b64encode(data).decode("ascii"), "base": base})
+    payload = json.dumps({
+        "b64": base64.b64encode(data).decode("ascii"), "base": base, "ext": ext,
+        "mime": mime, "desc": descripcion,
+    })
     components.html(
         f"""
         <style>
@@ -591,7 +642,7 @@ def _guardar_excel_html(data: bytes, base: str, *, height: int = 74) -> None:
         .ies-save-btn:disabled {{ background: #d8cec6; color: #7a6f66; cursor: not-allowed; }}
         .ies-save-msg {{ font-size: 0.78rem; margin-top: 4px; text-align: center; min-height: 1em; }}
         </style>
-        <button id="iesSaveBtn" class="ies-save-btn">Guardar Excel</button>
+        <button id="iesSaveBtn" class="ies-save-btn">{html.escape(etiqueta)}</button>
         <div id="iesSaveMsg" class="ies-save-msg"></div>
         <script>
         (function () {{
@@ -608,13 +659,13 @@ def _guardar_excel_html(data: bytes, base: str, *, height: int = 74) -> None:
 
             function nombreConSello(base) {{
                 // Sello AAAAMMDD_HHMM con la hora real del clic (no la de
-                // cuando Python generó el Excel), para que cada guardado
+                // cuando Python generó el archivo), para que cada guardado
                 // proponga un nombre distinto aunque los datos no cambien.
                 const d = new Date();
                 const pad = (n) => String(n).padStart(2, "0");
                 const sello = "" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate())
                     + "_" + pad(d.getHours()) + pad(d.getMinutes());
-                return sello + "_" + base + ".xlsx";
+                return sello + "_" + base + datos.ext;
             }}
 
             btn.addEventListener("click", async () => {{
@@ -631,8 +682,8 @@ def _guardar_excel_html(data: bytes, base: str, *, height: int = 74) -> None:
                         const handle = await window.showSaveFilePicker({{
                             suggestedName: fname,
                             types: [{{
-                                description: "Excel",
-                                accept: {{"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"]}},
+                                description: datos.desc,
+                                accept: {{[datos.mime]: [datos.ext]}},
                             }}],
                         }});
                         const writable = await conTiempo(handle.createWritable(), 6000);
@@ -642,7 +693,7 @@ def _guardar_excel_html(data: bytes, base: str, *, height: int = 74) -> None:
                         msg.style.color = "#2e7d32";
                     }} else {{
                         // Firefox / Safari: no hay selector, descarga normal.
-                        const blob = new Blob([bytes], {{type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}});
+                        const blob = new Blob([bytes], {{type: datos.mime}});
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement("a");
                         a.href = url;
@@ -702,14 +753,27 @@ def _resumen_por_sa_docx():
     return out
 
 
-def _generar_docx(data_bytes) -> bytes:
-    from io import BytesIO as _BD
-
+def _generar_docx() -> bytes:
+    """Word de la programación de aula con lo que hay en sesión."""
     from tools.programacion_aula import run_programacion_aula
+    from tools.proyecto import norm_titulo
 
+    ss = st.session_state
+    edits = {norm_titulo(k): v for k, v in ss.get("pa_sa_edits", {}).items()}
+    previos = {
+        norm_titulo(c.get("valores", {}).get("titulo")): c.get("valores", {})
+        for c in ss.get("pa_sa_cols", [])
+    }
+    situaciones = []
+    for n, dsa, tri in _sa_datos():
+        vals = edits.get(norm_titulo(dsa)) or previos.get(norm_titulo(dsa)) or {}
+        sit = {campo: vals.get(campo, "") for campo in ss.get("pa_sa_campos", [])}
+        sit.update(numero=n, titulo=dsa, trimestre=tri)
+        situaciones.append(sit)
     return run_programacion_aula(
-        _BD(data_bytes),
-        st.session_state.get("pa_tpl"),
+        dict(ss.get("pa_datos", {})),
+        situaciones,
+        ss.get("pa_tpl"),
         resumen_por_sa=_resumen_por_sa_docx(),
     )
 
@@ -786,9 +850,7 @@ def _calc_sesiones_por_evaluacion():
         "(normalmente 0, 1 o 2)</div>",
         unsafe_allow_html=True,
     )
-    # Si el Excel ya trae horas por día guardadas (R2:V2 de
-    # SituacionesAprendizaje, ver tools/situaciones_aprendizaje.py) se
-    # proponen esas; si no, 0 como hasta ahora.
+    # Si el proyecto ya trae horas por día guardadas se proponen esas; si no, 0.
     _horas_guardadas = ss.get("sa_horas_dia") or [None] * 5
     dcols = st.columns(5)
     ses_dia = {
@@ -800,10 +862,9 @@ def _calc_sesiones_por_evaluacion():
         for i, (dc, nom) in enumerate(zip(dcols, DIAS_SEMANA))
     }
 
-    # Si el Excel ya trae fechas guardadas (L2:Q2 de SituacionesAprendizaje,
-    # ver tools/situaciones_aprendizaje.py) se proponen esas; si no —o caen
+    # Si el proyecto ya trae fechas guardadas se proponen esas; si no —o caen
     # fuera del curso del calendario cargado—, el reparto automático en
-    # torno a Navidad y Semana Santa, como hasta ahora.
+    # torno a Navidad y Semana Santa.
     def _en_curso(d):
         return d is not None and cal.course_start <= d <= cal.course_end
 
@@ -821,7 +882,7 @@ def _calc_sesiones_por_evaluacion():
     st.markdown(
         '<div class="mini-label">Fechas de cada evaluación '
         + (
-            "(las que ya tenías guardadas en este Excel; ajústalas si hace falta)"
+            "(las que ya tenías guardadas en este proyecto; ajústalas si hace falta)"
             if hay_guardadas
             else "(se proponen en torno a Navidad y Semana Santa; ajústalas si hace falta)"
         )
@@ -846,7 +907,7 @@ def _calc_sesiones_por_evaluacion():
             rangos.append((a, b))
     st.caption(
         "Las horas por día, estas fechas y el festivo local se guardan en "
-        "el Excel — la próxima vez no hace falta volver a pensarlas."
+        "el proyecto — la próxima vez no hace falta volver a pensarlas."
     )
 
     extra = set()
@@ -863,7 +924,7 @@ def _calc_sesiones_por_evaluacion():
             if st.checkbox(f"{g.name}  ({rng})", value=ss.get(f"ses_hol{i}", True), key=f"ses_hol{i}"):
                 extra |= g.days
 
-    # Si el Excel ya trae un festivo local guardado (W2) y cae dentro del
+    # Si el proyecto ya trae un festivo local guardado y cae dentro del
     # curso del calendario cargado, se propone activado con esa fecha.
     _festivo_guardado = ss.get("sa_festivo_local")
     _festivo_en_curso = _festivo_guardado is not None and cal.course_start <= _festivo_guardado <= cal.course_end
@@ -1200,44 +1261,42 @@ def _resumen_actividad_dialog(row_idx, pending, il_info, elementos):
 
 
 def _aplicar_regeneracion(issues):
-    """Aplica en sesión los arreglos automáticos de los desajustes fixables:
-    1 IL en blanco por CE sin indicador, quita actividades huérfanas y regenera
-    las columnas de P_Aula_SA (deja `prog_base` con ese Excel de partida)."""
+    """Aplica en sesión los arreglos automáticos de los desajustes: 1 IL en
+    blanco por CE sin indicador, quita los IL de criterios que no existen y los
+    códigos (CON/CT/DO) que no están en el currículo, y las actividades
+    huérfanas."""
     ss = st.session_state
-    from io import BytesIO as _B2
+    from tools.consistencia import (
+        add_il_para_ce,
+        limpiar_codigos,
+        quitar_actividades_huerfanas,
+        quitar_il_de_ce,
+    )
 
-    from tools.consistencia import add_il_para_ce, quitar_actividades_huerfanas, regenerar_p_aula_sa
-    from tools.programacion_aula_editor import read_prog_aula
-
-    _ce_sin = next((it["datos"] for it in issues if it["clave"] == "ce_sin_il"), [])
-    if _ce_sin:
-        ss.il_rows = il_recompute(
-            add_il_para_ce(ss.il_rows, _ce_sin), ss.il_ce_ced, ss.il_ce_list
-        )
-        ss.pop("il_pending", None)
-    if any(it["clave"] == "act_huerfanas" for it in issues):
-        ss.pa_acts = quitar_actividades_huerfanas(ss.get("pa_acts", []), ss.il_rows)
-    if any(it["clave"] == "pasa_desajuste" for it in issues):
-        _base = ss.get("prog_base") or prog_excel.getvalue()
-        _sad = _sa_datos()
-        _reg = regenerar_p_aula_sa(
-            _B2(_base), [d for _, d, _t in _sad], sa_trimestres=[t for _, _d, t in _sad]
-        )
-        ss.prog_base = _reg
-        ss.pa_sa_cols = read_prog_aula(_B2(_reg))["sa_cols"]
-        ss.pa_sa_edits = {}
+    rows = list(ss.get("il_pending") or ss.il_rows)
+    for it in issues:
+        if it["clave"] == "ce_sin_il":
+            rows = add_il_para_ce(rows, it["datos"], ss.cur.get("ce_do"))
+        elif it["clave"] == "il_ce_malo":
+            rows = quitar_il_de_ce(rows, it["datos"])
+        elif it.get("autofix") == "limpiar_codigos":
+            rows = limpiar_codigos(rows, it["datos"])
+    ss.il_rows = il_recompute(rows, ss.il_ce_ced, ss.il_ce_list)
+    ss.pop("il_pending", None)
+    ss.il_nonce = ss.get("il_nonce", 0) + 1
+    ss.pa_acts = quitar_actividades_huerfanas(ss.get("pa_acts", []), ss.il_rows)
     ss.pop("prog_out", None)
     ss.pop("pa_docx", None)
 
 
-@st.dialog("Revisión de coherencia con las situaciones de aprendizaje", width="large")
-def _dlg_coherencia(issues, contexto="guardar"):
+@st.dialog("Revisión de coherencia del proyecto", width="large")
+def _dlg_coherencia_panel(issues, contexto="guardar"):
     ss = st.session_state
     _txt = {
-        "guardar": "La tabla de **situaciones de aprendizaje** manda. Antes de "
-        "guardar hay desajustes:",
-        "generar": "La tabla de **situaciones de aprendizaje** manda. Antes de "
-        "generar la programación hay desajustes:",
+        "guardar": "El **currículo** de la materia y la tabla de **situaciones de "
+        "aprendizaje** mandan. Hay desajustes:",
+        "generar": "El **currículo** de la materia y la tabla de **situaciones de "
+        "aprendizaje** mandan. Antes de generar la programación hay desajustes:",
     }[contexto]
     st.write(_txt)
     for it in issues:
@@ -1245,18 +1304,18 @@ def _dlg_coherencia(issues, contexto="guardar"):
     _manual = [it for it in issues if not it.get("autofix")]
     if _manual:
         st.error(
-            "Alguno no se puede arreglar solo (los criterios de evaluación tienen "
-            "que estar bien). Corrígelo en el Excel y vuelve a subirlo."
+            "Alguno no se puede arreglar solo: corrígelo en la página "
+            "«Diseño de la programación»."
         )
 
-    _accion = "Regenerar en blanco lo que haga falta"
+    _accion = "Aplicar los arreglos"
     if contexto == "guardar":
         _accion += " y guardar"
     elif contexto == "generar":
         _accion += " y generar"
 
     c1, c2 = st.columns(2)
-    if c1.button("Parar — lo arreglo a mano en Excel", use_container_width=True, key="dlg_abort"):
+    if c1.button("Lo reviso yo", use_container_width=True, key="dlg_abort"):
         ss.consist_seen = True
         st.rerun()
     if c2.button(_accion, type="primary", use_container_width=True,
@@ -1266,26 +1325,40 @@ def _dlg_coherencia(issues, contexto="guardar"):
             ss.consist_seen = True
             ss.prog_msg = ""
             if contexto in ("guardar", "generar"):
-                _data = _guardar_todo()
-                ss.prog_out = _data
+                ss.prog_out = _guardar_todo()
                 if contexto == "generar":
-                    ss.pa_docx = _generar_docx(_data)
+                    ss.pa_docx = _generar_docx()
         except Exception as exc:
             ss.prog_msg = f"Error al regenerar: {exc}"
         st.rerun()
 
 
-# ── Botón global "Guardar Excel" en la barra de arriba (todas las pestañas).
+_DLG_ABIERTO = False
+
+
+def _dlg_coherencia(issues, contexto="guardar"):
+    """Abre el aviso de coherencia como mucho una vez por ejecución (Streamlit
+    no admite dos st.dialog a la vez) y lo da por visto: cerrarlo con la X
+    tampoco lo vuelve a sacar en cada clic."""
+    global _DLG_ABIERTO
+    if _DLG_ABIERTO:
+        return
+    _DLG_ABIERTO = True
+    st.session_state.consist_seen = True
+    _dlg_coherencia_panel(issues, contexto)
+
+
+# ── Botón global "Guardar proyecto" en la barra de arriba (todas las páginas).
 # Un único botón, siempre el mismo, sin paso previo que pulsar: en cuanto hay
-# Excel cargado se calcula solo (en segundo plano, sin botón intermedio) y
+# proyecto cargado se calcula solo (en segundo plano, sin botón intermedio) y
 # aparece ya listo para guardar/descargar; cada clic en él (el 1º, el 2º o el
 # 1000º) hace una descarga/guardado real con el nombre actualizado a ese
 # instante. Cualquier edición posterior invalida "prog_out" (se pone a None
 # en cada Añadir/Borrar/Actualizar) y se recalcula solo otra vez. Si hay
-# desajustes de coherencia se avisa una sola vez por Excel cargado (reutiliza
+# desajustes de coherencia se avisa una sola vez por proyecto cargado (reutiliza
 # "consist_seen", el mismo aviso que al cargar) y no en cada edición.
 with dl_box:
-    if prog_excel is not None:
+    if _hay_proyecto():
         if not st.session_state.get("prog_out"):
             from tools.consistencia import revisar
 
@@ -1297,37 +1370,30 @@ with dl_box:
                     st.session_state.prog_out = _guardar_todo()
                     st.session_state.prog_msg = ""
                 except Exception as exc:
-                    st.session_state.prog_msg = f"Error al generar el Excel: {exc}"
+                    st.session_state.prog_msg = f"Error al generar el proyecto: {exc}"
                     st.session_state.pop("prog_out", None)
         if st.session_state.get("prog_msg"):
             st.caption(f"⚠️ {st.session_state.prog_msg}")
         if st.session_state.get("prog_out"):
             _sello = st.session_state.get("prog_sello", "")
-            _base = _nombre_sin_sello(prog_excel.name.rsplit(".", 1)[0])
-            _guardar_excel_html(st.session_state.prog_out, _base)
+            _base = _nombre_sin_sello(st.session_state.proy_nombre)
+            _guardar_archivo_html(st.session_state.prog_out, _base)
             if _sello:
                 st.caption(f"Guardado: {_sello}")
 
 # PÁGINA: DISEÑO DE LA PROGRAMACIÓN
 if page == "Diseño de la programación":
     st.caption(
-        "Edita las tablas curriculares del Excel de programación sin romper el libro. "
-        "Carga y descarga el archivo en la barra de arriba."
+        "Diseña la programación sobre el currículo de la materia. Abre, crea y guarda "
+        "el proyecto en la barra de arriba."
     )
 
     COLS = SA_COLS
 
-    if prog_excel is None:
-        st.info("Sube el Excel de programación en la barra de arriba para empezar.")
-    elif "sa_df" in st.session_state:
-        from io import BytesIO
-
-        from tools.indicadores_logro import save_indicadores
-        from tools.situaciones_aprendizaje import (
-            Situacion,
-            acumulado_por_trimestre,
-            save_situaciones,
-        )
+    if not _hay_proyecto():
+        st.info("Abre un proyecto o crea uno nuevo en la barra de arriba para empezar.")
+    else:
+        from tools.situaciones_aprendizaje import Situacion, acumulado_por_trimestre
         from tools.situaciones_informe import (
             AGGRID_GRID_CSS,
             AGGRID_LINES_CSS,
@@ -1745,7 +1811,8 @@ if page == "Diseño de la programación":
             st.markdown(
                 '<div class="mini-label">CE se elige de la lista · CED e IL (4.2.1, 4.2.2…) '
                 "son automáticos · PIL a mano, PIL% automático · SA solo entre las de arriba · "
-                "pasa el ratón por CED/DIL para ver el texto completo · marca la casilla de la "
+                "pulsa una celda de DO, CON o CT para marcarlos con ticks (al añadir un "
+                "indicador, DO trae los descriptores del criterio) · pasa el ratón por CED/DIL para ver el texto completo · marca la casilla de la "
                 "izquierda y pulsa <b>Borrar</b> · escribe y pulsa <b>Actualizar</b> para agrupar "
                 "por criterio y renumerar (nada se pierde hasta entonces)</div>",
                 unsafe_allow_html=True,
@@ -1806,13 +1873,17 @@ if page == "Diseño de la programación":
                 ),
             )
             gb.configure_column("DIL", width=240, tooltipField="DIL")
-            gb.configure_column("DO", width=180, tooltipField="DO")
             _pick_cell_style = JsCode(
                 "function(p){return {cursor:'pointer', textDecoration:'underline'}}"
             )
             _pick_on_click = JsCode(
                 "function(p){ p.node.setDataValue("
                 "'_pick', p.colDef.field + '|' + String(p.rowIndex) + '|' + Date.now()); }"
+            )
+            gb.configure_column(
+                "DO", width=180, editable=False, tooltipField="DO",
+                headerTooltip="Pulsa una celda para marcar los descriptores operativos con ticks",
+                cellStyle=_pick_cell_style, onCellClicked=_pick_on_click,
             )
             gb.configure_column(
                 "CON", width=130, editable=False, tooltipField="CON",
@@ -1872,7 +1943,7 @@ if page == "Diseño de la programación":
                     if _mark and _mark != st.session_state.get("il_pick_seen"):
                         st.session_state.il_pick_seen = _mark
                         _campo_click = _mark.split("|", 1)[0]
-                        if _campo_click not in ("CON", "CT"):
+                        if _campo_click not in ("CON", "CT", "DO"):
                             _campo_click = "CON"
                         st.session_state.il_pick_dialog = {"campo": _campo_click, "row_idx": _pi}
                         break
@@ -1880,6 +1951,7 @@ if page == "Diseño de la programación":
             _PICK_CONFIG = {
                 "CON": ("contenidos", "cod", "Contenidos de la materia (CON)"),
                 "CT": ("transversales", "num", "Elementos transversales (CT)"),
+                "DO": ("descriptores", "cod", "Descriptores operativos (DO)"),
             }
             if st.session_state.get("il_pick_dialog"):
                 _pd_info = st.session_state.il_pick_dialog
@@ -1887,6 +1959,14 @@ if page == "Diseño de la programación":
                     _pd_info["campo"], _PICK_CONFIG["CON"]
                 )
                 _pd_items = st.session_state.get("elementos", {}).get(_el_key, [])
+                if _pd_info["campo"] == "DO" and 0 <= _pd_info["row_idx"] < len(pending):
+                    # Solo los descriptores del criterio de esa fila (los que
+                    # el currículo vincula a ese CE), más los ya marcados.
+                    _fila_do = pending[_pd_info["row_idx"]]
+                    _rel = set(st.session_state.cur["ce_do"].get(_fila_do["CE"], []))
+                    _rel |= {t.strip() for t in str(_fila_do.get("DO") or "").split(",") if t.strip()}
+                    if _rel:
+                        _pd_items = [it for it in _pd_items if it["cod"] in _rel]
                 _abrir_dialogo_elementos(
                     _pd_info["campo"], _pd_titulo, _pd_info["row_idx"], pending, _pd_items,
                     cod_key=_cod_key,
@@ -1904,8 +1984,9 @@ if page == "Diseño de la programación":
                 for _ in range(int(add_n)):
                     base.append(
                         {
-                            "CE": add_ce, "CED": "", "IL": "", "PIL": 1,
-                            "DIL": "", "DO": "", "CON": "", "CT": "",
+                            "CE": add_ce, "CED": "", "IL": "", "PIL": 1, "DIL": "",
+                            "DO": ", ".join(st.session_state.cur["ce_do"].get(add_ce, [])),
+                            "CON": "", "CT": "",
                             "IE": "", "CC": "", "AE": "", "SA": None,
                         }
                     )
@@ -1936,7 +2017,7 @@ if page == "Diseño de la programación":
                 if not r["CE"]:
                     il_errores.append(f"Fila {i}: falta el criterio (CE).")
                 elif r["CE"] not in ce_ced:
-                    il_errores.append(f"Fila {i}: el criterio {r['CE']} no existe en la tabla de criterios.")
+                    il_errores.append(f"Fila {i}: el criterio {r['CE']} no existe en el currículo de la materia.")
                 if r["SA"] not in (None, "") and int(r["SA"]) not in sa_options:
                     il_errores.append(
                         f"Fila {i}: la SA {r['SA']} no está en la tabla de situaciones de aprendizaje."
@@ -2131,15 +2212,14 @@ if page == "Diseño de la programación":
 elif page == "Contenidos":
     st.markdown(
         '<div class="panel-card"><h3>Contenidos</h3>'
-        "<p>Contenidos de la materia y contenidos transversales (hoja "
-        "<code>LOMLOE</code>). Se marca en verde cada elemento que ya está "
-        "asignado a algún indicador de logro (en su columna CON o CT), igual que "
-        "el aviso de la hoja de Excel.</p></div>",
+        "<p>Contenidos de la materia y contenidos transversales de la etapa, tal "
+        "como vienen en el currículo. Se marca en verde cada elemento que ya está "
+        "asignado a algún indicador de logro (en su columna CON o CT).</p></div>",
         unsafe_allow_html=True,
     )
 
-    if prog_excel is None or "elementos" not in st.session_state:
-        st.info("Sube el Excel de programación en la barra de arriba.")
+    if not _hay_proyecto():
+        st.info("Abre un proyecto o crea uno nuevo en la barra de arriba.")
     else:
         from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
         from tools.indicadores_logro import usados_en_il
@@ -2163,8 +2243,8 @@ elif page == "Contenidos":
             for it in items:
                 cod = it[key_field]
                 ok = cod.replace(" ", "") in used_set
-                rows.append({"__ok": ok, "●": "🟢" if ok else "🔴",
-                             header_cod: cod, "Descripción": it[label_field]})
+                rows.append({"__ok": ok, "●": "🟢" if ok else "🔴", header_cod: cod,
+                             "Bloque": it.get("bloque", ""), "Descripción": it[label_field]})
             n_ok = sum(1 for r in rows if r["__ok"])
             st.caption(f"🟢 {n_ok} asignados · 🔴 {len(rows) - n_ok} sin asignar · {len(rows)} en total")
             if _solo_falta:
@@ -2172,13 +2252,16 @@ elif page == "Contenidos":
             if not rows:
                 st.success("Todos asignados.")
                 return
-            df = pd.DataFrame(rows, columns=["__ok", "●", header_cod, "Descripción"])
+            df = pd.DataFrame(rows, columns=["__ok", "●", header_cod, "Bloque", "Descripción"])
             gb = GridOptionsBuilder.from_dataframe(df)
             gb.configure_default_column(editable=False, resizable=True, sortable=True, filter=False)
             gb.configure_column("__ok", hide=True)
             gb.configure_column("●", headerName="", width=46, pinned="left",
                                 cellStyle={"textAlign": "center"})
             gb.configure_column(header_cod, width=88, pinned="left")
+            # Bloque (solo contenidos de la materia): oculto si ninguno lo tiene.
+            gb.configure_column("Bloque", width=220, tooltipField="Bloque",
+                                hide=not any(r["Bloque"] for r in rows))
             gb.configure_column("Descripción", flex=1, minWidth=280, tooltipField="Descripción")
             gb.configure_grid_options(enableBrowserTooltips=True, tooltipShowDelay=300,
                                       rowHeight=28, getRowStyle=_rowstyle)
@@ -2207,14 +2290,11 @@ elif page == "Programación de aula":
         unsafe_allow_html=True,
     )
 
-    if prog_excel is None:
-        st.info("Sube el Excel de programación en la barra de arriba para empezar.")
+    if not _hay_proyecto():
+        st.info("Abre un proyecto o crea uno nuevo en la barra de arriba para empezar.")
     else:
-        from io import BytesIO
-
         from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
         from tools.programacion_aula_editor import recompute_actividades, valores_actividades
-        from tools.programacion_aula_editor import read_prog_aula
         from tools.situaciones_informe import (
             AGGRID_GRID_CSS,
             build_html_table_copy_html,
@@ -2222,14 +2302,6 @@ elif page == "Programación de aula":
         )
 
         ss = st.session_state
-        if "pa_datos" not in ss:
-            _pa = read_prog_aula(prog_excel)
-            ss.pa_datos = dict(_pa["datos"])
-            ss.pa_campos_datos = [k for k, _ in _pa["datos"]]
-            ss.pa_sa_campos = _pa["sa_campos"]
-            ss.pa_sa_cols = _pa["sa_cols"]
-            ss.pa_acts = _pa["actividades"]
-            ss.pa_sa_edits = {}
         ss.setdefault("pa_nonce", 0)
 
         # Indicadores de logro ya recalculados (IL/SA/PIL rellenos). Se toma el
@@ -2243,14 +2315,7 @@ elif page == "Programación de aula":
         _pil_por_il = {r["IL"]: float(r["PIL"] or 0) for r in _il_state}
         _ce_p = {r["CE"]: r["P"] for r in ss.get("ce_rows", [])} or dict(ss.get("il_ce_p", {}))
 
-        _src = ss.get("sa_grid_rows")
-        if _src:
-            _sa_opts = [(r["SA"], r["DSA"]) for r in _src if r["SA"] is not None]
-        else:
-            _sa_opts = [
-                (int(v[0]), str(v[2] or ""))
-                for v in ss.sa_df.itertuples(index=False) if not pd.isna(v[0])
-            ]
+        _sa_opts = _sa_pares()
 
         def _hum(k):
             return k.replace("_", " ").strip().capitalize()
@@ -2266,8 +2331,7 @@ elif page == "Programación de aula":
                 _dlg_coherencia(_iss, contexto="generar")
             else:
                 try:
-                    _upd = _guardar_todo()
-                    ss.pa_docx = _generar_docx(_upd)
+                    ss.pa_docx = _generar_docx()
                     ss.pa_gen_msg = ""
                 except Exception as exc:
                     ss.pa_gen_msg = f"No se ha podido generar: {exc}"
@@ -2292,15 +2356,25 @@ elif page == "Programación de aula":
             "resultados_evaluacion_inicial", "conclusiones_evaluacion_inicial",
             "resultados_evaluacion_aprendizajes", "revision_programacion",
         }
+        def _pad_sync(k):
+            """Copia lo tecleado al estado e invalida el proyecto antes del
+            rerun: la barra de arriba lo recalcula antes de que esta página
+            vuelva a pintar los campos (mismo patrón que _fam_sync)."""
+            ss.pa_datos[k] = ss[f"pad_{k}"]
+            ss.pop("prog_out", None)
+            ss.pop("pa_docx", None)
+
         with _tab_pad:
             if _tab_pad.open:
                 _cortos = [k for k in ss.pa_campos_datos if k not in _LARGOS]
                 _cc = st.columns(2)
                 for i, k in enumerate(_cortos):
-                    ss.pa_datos[k] = _cc[i % 2].text_input(_hum(k), value=ss.pa_datos.get(k, ""), key=f"pad_{k}")
+                    ss.pa_datos[k] = _cc[i % 2].text_input(_hum(k), value=ss.pa_datos.get(k, ""), key=f"pad_{k}",
+                                                        on_change=_pad_sync, args=(k,))
                 for k in ss.pa_campos_datos:
                     if k in _LARGOS:
-                        ss.pa_datos[k] = st.text_area(_hum(k), value=ss.pa_datos.get(k, ""), key=f"pad_{k}", height=90)
+                        ss.pa_datos[k] = st.text_area(_hum(k), value=ss.pa_datos.get(k, ""), key=f"pad_{k}", height=90,
+                                                   on_change=_pad_sync, args=(k,))
 
         # ── PESTAÑA: Actividades por situación de aprendizaje
         with _tab_pact:
@@ -2461,8 +2535,8 @@ elif page == "Programación de aula":
                         ss.pop("pa_docx", None)
 
                 # Campos de la programación de aula para esta SA. Se emparejan por
-                # título; una SA nueva sin columna se edita igual (la columna se crea
-                # al guardar). Las ediciones se guardan por título de SA.
+                # título (las ediciones de la sesión se guardan por título de SA y
+                # el proyecto las asigna a su SA al guardar).
                 import re as _re
 
                 _dsa_sel = next((d for n, d in _sa_opts if n == sa_sel), "")
@@ -2472,11 +2546,14 @@ elif page == "Programación de aula":
                     if _norm(_e.get("valores", {}).get("titulo")) == _norm(_dsa_sel):
                         _base = _e["valores"]
                         break
-                _nueva = not _base
                 _tri_sel = next((t for n, _d, t in _sa_datos() if n == sa_sel), "")
                 st.markdown("**Campos de la programación de aula para esta SA**")
-                if _nueva:
-                    st.caption("Situación nueva: su columna en P_Aula_SA se creará al guardar.")
+                def _pasa_sync(dsa, campo, key):
+                    # Igual que _pad_sync, para los campos de aula de la SA.
+                    ss.pa_sa_edits.setdefault(dsa, dict(_base))[campo] = ss[key]
+                    ss.pop("prog_out", None)
+                    ss.pop("pa_docx", None)
+
                 _cur = ss.pa_sa_edits.get(_dsa_sel, dict(_base))
                 # titulo y trimestre son automáticos (de la tabla de situaciones)
                 _cur["titulo"] = _dsa_sel
@@ -2491,6 +2568,7 @@ elif page == "Programación de aula":
                     _cur[campo] = st.text_area(
                         _hum(campo), value=_cur.get(campo, ""),
                         key=f"pasa_{sa_sel}_{campo}", height=70,
+                        on_change=_pasa_sync, args=(_dsa_sel, campo, f"pasa_{sa_sel}_{campo}"),
                     )
                 ss.pa_sa_edits[_dsa_sel] = _cur
 
@@ -2530,12 +2608,13 @@ elif page == "Información a familias":
     st.markdown(
         '<div class="panel-card"><h3>Información a familias</h3>'
         "<p>Documento para informar al alumnado y a las familias sobre la evaluación "
-        "(ORDEN EDU/424/2024, art. 12 · ORDEN EDU/425/2024, art. 10)<code>Info_Familias</code>.</p></div>",
+        "(ORDEN EDU/424/2024, art. 12 · ORDEN EDU/425/2024, art. 10). Lo que no sale "
+        "de la programación se escribe aquí y se guarda en el proyecto.</p></div>",
         unsafe_allow_html=True,
     )
 
-    if prog_excel is None or "fam_campos" not in st.session_state:
-        st.info("Sube el Excel de programación en la barra de arriba para empezar.")
+    if not _hay_proyecto():
+        st.info("Abre un proyecto o crea uno nuevo en la barra de arriba para empezar.")
     else:
         from tools.info_familias import (
             AGENTES,
@@ -2549,19 +2628,8 @@ elif page == "Información a familias":
 
         ss = st.session_state
 
-        def _fam_sits():
-            src = ss.get("sa_grid_rows")
-            if src:
-                return [{k: r.get(k) for k in ("SA", "EV", "DSA", "HSA")} for r in src]
-            return [
-                {"SA": None if pd.isna(v[0]) else int(v[0]),
-                 "EV": None if pd.isna(v[1]) else v[1],
-                 "DSA": str(v[2] or ""), "HSA": None if pd.isna(v[3]) else v[3]}
-                for v in ss.sa_df.itertuples(index=False)
-            ]
-
         _calc = datos_familias(
-            sits=_fam_sits(),
+            sits=_sa_filas(),
             ce_list=ss.il_ce_list,
             ce_ced=ss.il_ce_ced,
             ce_p={r["CE"]: r["P"] for r in ss.get("ce_rows", [])} or dict(ss.get("il_ce_p", {})),
@@ -2569,17 +2637,15 @@ elif page == "Información a familias":
             elementos=ss.get("elementos", {}),
         )
         _nums = [n for n, _p in _calc["competencias"]]
+        _comp_txt = ss.cur["competencias"]  # texto del currículo, no editable
 
         def _fam_sync():
             """Pasa lo tecleado (widgets fam_w_*) al estado canónico e invalida
-            el Excel y el Word ya generados. Va como on_change: así, en el rerun,
-            la barra de arriba recalcula el Excel ya con el texto nuevo."""
+            el proyecto y el Word ya generados. Va como on_change: así, en el
+            rerun, la barra de arriba recalcula el proyecto ya con el texto nuevo."""
             for k, _l, _h in CAMPOS:
                 if f"fam_w_{k}" in ss:
                     ss.fam_campos[k] = ss[f"fam_w_{k}"]
-            for n in _nums:
-                if f"fam_w_comp_{n}" in ss:
-                    ss.fam_comp[n] = ss[f"fam_w_comp_{n}"]
             ss.pop("prog_out", None)
             ss.pop("fam_docx", None)
 
@@ -2593,7 +2659,7 @@ elif page == "Información a familias":
                     datos_generales=dict(ss.get("pa_datos", {})),
                     calculo=_calc,
                     campos=ss.fam_campos,
-                    competencias=ss.fam_comp,
+                    competencias=_comp_txt,
                     template_source=_fam_tpl,
                 )
                 ss.fam_msg = ""
@@ -2615,7 +2681,7 @@ elif page == "Información a familias":
                 use_container_width=True,
             )
 
-        _faltan = campos_vacios(ss.fam_campos, ss.fam_comp, _nums)
+        _faltan = campos_vacios(ss.fam_campos, _comp_txt, _nums)
         if _faltan:
             st.warning(
                 "Faltan por rellenar (en el documento saldrán como «pendiente de "
@@ -2636,19 +2702,30 @@ elif page == "Información a familias":
 
         with _tab_comp:
             if _tab_comp.open:
+                _norma = ss.proy_materia.get("normativa") or "currículo"
                 st.caption(
                     "Una por cada competencia específica que aparece en los criterios "
-                    "(el primer número del CE: 2.4 → competencia 2). Copia su texto del "
-                    "currículo (Decreto 39/2022 ESO · Decreto 40/2022 Bachillerato)."
+                    f"(el primer número del CE: 2.4 → competencia 2). Texto del {_norma}."
                 )
                 _peso = dict(_calc["competencias"])
-                for n in _nums:
-                    st.text_area(
-                        f"Competencia específica {n} · peso en la materia "
-                        + f"{_peso[n] * 100:.2f} %".replace(".", ","),
-                        value=ss.fam_comp.get(n, ""), height=80,
-                        key=f"fam_w_comp_{n}", on_change=_fam_sync,
-                    )
+                _cdo = ss.cur.get("comp_descriptores", {})
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "Nº": n,
+                                "Competencia específica": _comp_txt.get(n, ""),
+                                "Descriptores": _cdo.get(n, ""),
+                                "Peso": f"{_peso[n] * 100:.2f} %".replace(".", ","),
+                            }
+                            for n in _nums
+                        ]
+                    ),
+                    use_container_width=True, hide_index=True,
+                    column_config={
+                        "Competencia específica": st.column_config.TextColumn(width="large"),
+                    },
+                )
 
         with _tab_cal:
             if _tab_cal.open:

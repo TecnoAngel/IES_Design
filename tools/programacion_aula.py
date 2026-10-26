@@ -11,19 +11,12 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Pt, RGBColor
 from docxtpl import DocxTemplate
-from openpyxl import load_workbook
 
 # Un índice/TOC guardado en la plantilla puede dejar en caché texto de una versión
 # anterior de un encabezado (p.ej. "{{ situacion.titulo }}") fuera del bucle real.
 # Con el Undefined por defecto de Jinja eso rompe el render ('situacion' is undefined);
 # con ChainableUndefined esas referencias sueltas se imprimen en blanco sin fallar.
 _JINJA_ENV = jinja2.Environment(undefined=jinja2.ChainableUndefined)
-
-DATOS_GENERALES_SHEET = "P_Aula_Datos_Generales"
-SITUACIONES_SHEET = "P_Aula_SA"
-INDICADORES_SHEET = "IndicadoresLogro"
-ACTIVIDADES_SHEET = "Actividades"
-CRITERIOS_SHEET_PREFIX = "CriteriosEvaluaci"  # evita líos de acentos con el nombre exacto
 
 INDICADORES_COLUMNAS = ["CE", "IL", "CT", "IE", "CC", "AE"]
 INDICADORES_CABECERAS = INDICADORES_COLUMNAS
@@ -53,213 +46,6 @@ def ensure_template(template_source: Any) -> bytes:
             f"No se ha subido plantilla y no existe la plantilla por defecto: {default_template}"
         )
     return default_template.read_bytes()
-
-
-def _find_sheet(wb, prefix: str):
-    for name in wb.sheetnames:
-        if name.startswith(prefix):
-            return wb[name]
-    return None
-
-
-def _sheet_rows_as_dicts(ws, header_marker: str = "CE") -> list[dict]:
-    """Lee una hoja localizando la fila de cabecera real: la primera que contiene
-    literalmente `header_marker` como valor de celda. Algunas hojas del Excel traen
-    bloques de resumen (p.ej. 'SUMA de Pesos') por encima de la tabla de datos, así
-    que no basta con coger la primera fila no vacía."""
-    rows = list(ws.iter_rows(values_only=True))
-    header_idx = None
-    for i, row in enumerate(rows):
-        if row and any(str(c).strip() == header_marker for c in row if c is not None):
-            header_idx = i
-            break
-    if header_idx is None:
-        return []
-
-    headers = [str(h).strip() if h is not None else "" for h in rows[header_idx]]
-    result: list[dict] = []
-    for row in rows[header_idx + 1 :]:
-        if row is None or all(c in (None, "") for c in row):
-            continue
-        result.append({headers[i]: row[i] for i in range(len(headers)) if i < len(row)})
-    return result
-
-
-def _to_number(value: Any) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _to_int(value: Any) -> int | None:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def read_datos_generales(payload: bytes) -> dict:
-    wb = load_workbook(BytesIO(payload), data_only=True)
-    if DATOS_GENERALES_SHEET not in wb.sheetnames:
-        raise ValueError(f"El Excel no tiene una hoja llamada '{DATOS_GENERALES_SHEET}'.")
-    ws = wb[DATOS_GENERALES_SHEET]
-    datos: dict = {}
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if not row or row[0] is None or str(row[0]).strip() == "":
-            continue
-        key = str(row[0]).strip()
-        value = row[1] if len(row) > 1 else None
-        datos[key] = "" if value is None else value
-    return datos
-
-
-def read_situaciones(payload: bytes) -> list[dict]:
-    """Lee la hoja transpuesta: columna A = nombre de campo, cada columna siguiente = una
-    situación de aprendizaje (una columna con cabecera no vacía = una situación)."""
-    wb = load_workbook(BytesIO(payload), data_only=True)
-    if SITUACIONES_SHEET not in wb.sheetnames:
-        raise ValueError(f"El Excel no tiene una hoja llamada '{SITUACIONES_SHEET}'.")
-    ws = wb[SITUACIONES_SHEET]
-    rows = list(ws.iter_rows(values_only=True))
-    if not rows:
-        return []
-
-    header_row = rows[0]
-    data_rows = rows[1:]
-    situacion_columns = [i for i in range(1, len(header_row)) if header_row[i] not in (None, "")]
-
-    situaciones: list[dict] = []
-    for numero, col_idx in enumerate(situacion_columns, start=1):
-        situacion: dict = {"numero": numero}
-        for row in data_rows:
-            if not row or row[0] is None or str(row[0]).strip() == "":
-                continue
-            campo = str(row[0]).strip()
-            valor = row[col_idx] if col_idx < len(row) else None
-            situacion[campo] = "" if valor is None else valor
-
-        if any(v not in (None, "") for k, v in situacion.items() if k != "numero"):
-            situaciones.append(situacion)
-
-    return situaciones
-
-
-def read_indicadores_por_sa(payload: bytes) -> dict[int, list[dict]]:
-    """Filtra IndicadoresLogro por SA, quedándose solo con CE, IL, CT, IE, CC, AE."""
-    wb = load_workbook(BytesIO(payload), data_only=True)
-    if INDICADORES_SHEET not in wb.sheetnames:
-        return {}
-    filas = _sheet_rows_as_dicts(wb[INDICADORES_SHEET])
-
-    por_sa: dict[int, list[dict]] = {}
-    for r in filas:
-        sa = _to_int(r.get("SA"))
-        if sa is None:
-            continue
-        fila = {col: r.get(col) for col in INDICADORES_COLUMNAS}
-        por_sa.setdefault(sa, []).append(fila)
-    return por_sa
-
-
-def compute_valores_actividades_por_sa(payload: bytes) -> dict[int, list[dict]]:
-    """Replica en Python las medidas DAX de Power Pivot 'Valor_actividad_sobre_programación'
-    y 'Valor_actividad_sobre_SA', para poder calcularlas para todas las situaciones
-    (el Excel solo trae en caché la última que se vio con el segmentador de datos)."""
-    wb = load_workbook(BytesIO(payload), data_only=True)
-    if ACTIVIDADES_SHEET not in wb.sheetnames or INDICADORES_SHEET not in wb.sheetnames:
-        return {}
-    ws_criterios = _find_sheet(wb, CRITERIOS_SHEET_PREFIX)
-    if ws_criterios is None:
-        return {}
-
-    actividades = _sheet_rows_as_dicts(wb[ACTIVIDADES_SHEET], header_marker="IL")
-    indicadores = _sheet_rows_as_dicts(wb[INDICADORES_SHEET], header_marker="CE")
-    criterios = _sheet_rows_as_dicts(ws_criterios, header_marker="CE")
-
-    # IL -> {CE, PIL}
-    info_por_il: dict[str, dict] = {}
-    for r in indicadores:
-        il = r.get("IL")
-        if il is None:
-            continue
-        info_por_il[str(il)] = {"CE": r.get("CE"), "PIL": _to_number(r.get("PIL"))}
-
-    # CE -> peso (P)
-    peso_por_ce: dict[str, float] = {}
-    for r in criterios:
-        ce = r.get("CE")
-        if ce is None:
-            continue
-        peso_por_ce[str(ce)] = _to_number(r.get("P"))
-    total_suma_pesos = sum(peso_por_ce.values())
-
-    # CE -> suma de PIL de todos sus IL
-    total_pil_por_ce: dict[str, float] = {}
-    for info in info_por_il.values():
-        ce = info["CE"]
-        if ce is None:
-            continue
-        total_pil_por_ce[str(ce)] = total_pil_por_ce.get(str(ce), 0.0) + info["PIL"]
-
-    # IL -> suma de PA de todas sus actividades
-    total_pa_por_il: dict[str, float] = {}
-    for a in actividades:
-        il = a.get("IL")
-        if il is None:
-            continue
-        total_pa_por_il[str(il)] = total_pa_por_il.get(str(il), 0.0) + _to_number(a.get("PA"))
-
-    resultados: list[dict] = []
-    for a in actividades:
-        il_raw = a.get("IL")
-        il = str(il_raw) if il_raw is not None else None
-        pa = _to_number(a.get("PA"))
-        total_pa_il = total_pa_por_il.get(il, 0.0)
-        porcentaje_a_en_il = (pa / total_pa_il) if total_pa_il else 0.0
-
-        info_il = info_por_il.get(il, {})
-        ce_raw = info_il.get("CE")
-        ce = str(ce_raw) if ce_raw is not None else None
-        pil_del_il = info_il.get("PIL", 0.0)
-        total_pil_ce = total_pil_por_ce.get(ce, 0.0)
-        porcentaje_il_en_ce = (pil_del_il / total_pil_ce) if total_pil_ce else 0.0
-
-        peso_ce = peso_por_ce.get(ce, 0.0)
-        porcentaje_ce_relativo = (peso_ce / total_suma_pesos) if total_suma_pesos else 0.0
-
-        valor_programacion = porcentaje_a_en_il * porcentaje_il_en_ce * porcentaje_ce_relativo
-
-        resultados.append(
-            {
-                "sa": _to_int(a.get("SA")),
-                "A": a.get("A"),
-                "DA": a.get("DA"),
-                "valor_programacion": valor_programacion,
-            }
-        )
-
-    total_valor_por_sa: dict[int, float] = {}
-    for r in resultados:
-        if r["sa"] is None:
-            continue
-        total_valor_por_sa[r["sa"]] = total_valor_por_sa.get(r["sa"], 0.0) + r["valor_programacion"]
-
-    por_sa: dict[int, list[dict]] = {}
-    for r in resultados:
-        if r["sa"] is None:
-            continue
-        total_sa = total_valor_por_sa.get(r["sa"], 0.0)
-        valor_sa = (r["valor_programacion"] / total_sa) if total_sa else 0.0
-        por_sa.setdefault(r["sa"], []).append(
-            {
-                "A": r["A"],
-                "DA": r["DA"],
-                "valor_programacion": r["valor_programacion"],
-                "valor_sa": valor_sa,
-            }
-        )
-    return por_sa
 
 
 def _fmt_pct(value: float) -> str:
@@ -355,71 +141,37 @@ def build_tabla_actividades(tpl: DocxTemplate, actividades: list[dict]):
     )
 
 
-def _sa_num_por_titulo(payload: bytes) -> dict[str, int]:
-    """Mapa {título normalizado -> nº real de SA} a partir de la tabla
-    ``SituacionesAprendizaje`` (la que manda). Las columnas de ``P_Aula_SA`` no
-    tienen por qué venir en orden de SA, así que la posición de columna no sirve
-    para emparejar indicadores/actividades (que van por nº real de SA)."""
-    try:
-        from tools.situaciones_aprendizaje import read_situaciones as _read_tabla_sa
-
-        datos = _read_tabla_sa(BytesIO(payload))
-    except Exception:
-        return {}
-    return {
-        _norm_titulo(s.dsa): s.sa
-        for s in datos.situaciones
-        if s.sa not in (None, "") and _norm_titulo(s.dsa)
-    }
-
-
 def run_programacion_aula(
-    excel_source: Any,
+    datos_generales: dict,
+    situaciones: list[dict],
     template_source: Any = None,
     *,
     resumen_por_sa: dict | None = None,
 ) -> bytes:
-    """Genera el .docx de la programación de aula a partir del Excel de datos.
+    """Genera el .docx de la programación de aula.
 
-    ``resumen_por_sa`` (opcional): ``{titulo_de_SA: {"indicadores": [...],
-    "actividades": [...]}}`` ya calculado por la app (misma cuenta que el
-    "Resumen de actividades" de cada SA en pantalla). Cuando se pasa, las tablas
-    ``{{p situacion.tabla_indicadores}}`` / ``{{p situacion.tabla_actividades}}``
-    se rellenan desde ahí en vez de recalcular sobre un Excel que puede traer las
-    fórmulas sin cachear.
+    ``datos_generales``: ``{campo: valor}`` (variables sueltas de la plantilla).
+    ``situaciones``: una por SA, en orden, con ``numero``, ``titulo``,
+    ``trimestre`` y los campos de aula (``contextualizacion``, ``metodos``…).
+    ``resumen_por_sa``: ``{titulo_de_SA: {"indicadores": [...], "actividades":
+    [...]}}`` ya calculado por la app (misma cuenta que el «Resumen de
+    actividades» de cada SA en pantalla) para las tablas
+    ``{{p situacion.tabla_indicadores}}`` y ``{{p situacion.tabla_actividades}}``.
     """
-    payload = _read_source_bytes(excel_source)
-    template_bytes = ensure_template(template_source)
-
-    ctx = read_datos_generales(payload)
-    situaciones = read_situaciones(payload)
-
     if not situaciones:
-        raise ValueError(
-            f"No se han encontrado situaciones de aprendizaje en la hoja '{SITUACIONES_SHEET}'."
-        )
+        raise ValueError("No hay situaciones de aprendizaje.")
 
-    tpl = DocxTemplate(BytesIO(template_bytes))
-
+    tpl = DocxTemplate(BytesIO(ensure_template(template_source)))
     resumen = {_norm_titulo(k): v for k, v in (resumen_por_sa or {}).items()}
-    num_por_titulo = _sa_num_por_titulo(payload)
-    indicadores_por_sa = read_indicadores_por_sa(payload)
-    actividades_por_sa = compute_valores_actividades_por_sa(payload)
 
-    for situacion in situaciones:
-        clave = _norm_titulo(situacion.get("titulo"))
-        entrada = resumen.get(clave)
-        if entrada is not None:
-            indicadores = entrada.get("indicadores", [])
-            actividades = entrada.get("actividades", [])
-        else:
-            numero = num_por_titulo.get(clave, situacion["numero"])
-            indicadores = indicadores_por_sa.get(numero, [])
-            actividades = actividades_por_sa.get(numero, [])
-        situacion["tabla_indicadores"] = build_tabla_indicadores(tpl, indicadores)
-        situacion["tabla_actividades"] = build_tabla_actividades(tpl, actividades)
-
-    ctx["situaciones"] = situaciones
+    ctx = dict(datos_generales)
+    ctx["situaciones"] = []
+    for sit in situaciones:
+        sit = dict(sit)
+        entrada = resumen.get(_norm_titulo(sit.get("titulo")), {})
+        sit["tabla_indicadores"] = build_tabla_indicadores(tpl, entrada.get("indicadores", []))
+        sit["tabla_actividades"] = build_tabla_actividades(tpl, entrada.get("actividades", []))
+        ctx["situaciones"].append(sit)
 
     tpl.render(ctx, jinja_env=_JINJA_ENV)
     buffer = BytesIO()

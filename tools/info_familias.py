@@ -9,40 +9,28 @@ individualizada. Además, una página por situación de aprendizaje con los
 criterios e indicadores de logro que se trabajan (sin el texto del indicador),
 sus pesos y la tarta de instrumentos de esa SA.
 
-Lo que no está en el resto del Excel (texto de las competencias específicas,
-criterios de redondeo, promoción, medidas de atención…) se guarda en una hoja
-propia ``Info_Familias``:
-
-* ``A:B`` pares campo / valor (ver ``CAMPOS``);
-* ``D:E`` nº de competencia específica / descripción.
-
-La hoja no es una tabla de Excel (ListObject) y es enteramente de la app: al
-guardar se reescribe entera. Si el Excel no la tiene, se **añade** de forma
-quirúrgica sobre el ZIP (workbook.xml, sus rels, [Content_Types].xml y
-docProps/app.xml), sin tocar el resto del libro.
+El texto de las competencias específicas sale del currículo (``curriculo.db``).
+Lo demás que no está en la programación (redondeo, promoción, medidas de
+atención…, ver ``CAMPOS``) se teclea en la app y se guarda en el proyecto
+(tabla ``familias``).
 """
 
 from __future__ import annotations
 
 import re
-import zipfile
 from io import BytesIO
 from pathlib import Path
 from typing import Any
-from xml.sax.saxutils import escape
 
 import jinja2
 from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Cm, Pt, RGBColor
 from docxtpl import DocxTemplate, InlineImage, RichText
-from openpyxl import load_workbook
 
 from tools.programacion_aula import _set_cell_background, _set_table_borders
 
-SHEET_NAME = "Info_Familias"
-
-# (clave, etiqueta para la app, ayuda). El orden es el de la hoja.
+# (clave, etiqueta para la app, ayuda).
 CAMPOS: list[tuple[str, str, str]] = [
     ("redondeo_criterios", "Criterio de redondeo en la calificación de cada criterio de evaluación",
      "Según la Propuesta Curricular y la programación didáctica."),
@@ -68,11 +56,6 @@ AGENTES = {"HE": "heteroevaluación (profesorado)", "CO": "coevaluación", "AEV"
 SIN_COMPLETAR = "(pendiente de completar)"
 HEADER_FILL = "A6182E"
 _JINJA_ENV = jinja2.Environment(undefined=jinja2.ChainableUndefined)
-
-_NS_MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
-_NS_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-_REL_WORKSHEET = _NS_REL + "/worksheet"
-_CT_WORKSHEET = "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"
 
 
 def _read_bytes(source: Any) -> bytes:
@@ -100,163 +83,8 @@ def numero_competencia(ce: str) -> str:
     return _s(ce).split(".", 1)[0]
 
 
-# ---------------------------------------------------------------------------
-# LECTURA
-# ---------------------------------------------------------------------------
-def read_info_familias(source: Any) -> dict:
-    """{"campos": {clave: texto}, "competencias": {nº: descripción}, "existe":
-    bool}. Vacío si el Excel aún no tiene la hoja."""
-    out = {"campos": {k: "" for k in CAMPOS_KEYS}, "competencias": {}, "existe": False}
-    wb = load_workbook(BytesIO(_read_bytes(source)), data_only=True)
-    if SHEET_NAME not in wb.sheetnames:
-        return out
-    out["existe"] = True
-    ws = wb[SHEET_NAME]
-    for row in ws.iter_rows(min_row=2, max_col=5, values_only=True):
-        a, b = (row[0] if len(row) > 0 else None), (row[1] if len(row) > 1 else None)
-        d, e = (row[3] if len(row) > 3 else None), (row[4] if len(row) > 4 else None)
-        if _s(a) in out["campos"]:
-            out["campos"][_s(a)] = _s(b)
-        if _s(d):
-            num = str(int(d)) if isinstance(d, float) and d.is_integer() else _s(d)
-            out["competencias"][num] = _s(e)
-    return out
-
-
-# ---------------------------------------------------------------------------
-# ESCRITURA QUIRÚRGICA (hoja propia, se reescribe entera; se añade si falta)
-# ---------------------------------------------------------------------------
-def _txt(ref: str, value: Any) -> str:
-    if value in (None, ""):
-        return ""
-    return (
-        f'<c r="{ref}" t="inlineStr"><is><t xml:space="preserve">'
-        f"{escape(str(value))}</t></is></c>"
-    )
-
-
 def _comp_sort_key(num: str):
     return (0, int(num)) if num.isdigit() else (1, num)
-
-
-def _sheet_xml(campos: dict[str, str], competencias: dict[str, str]) -> str:
-    comps = sorted(competencias.items(), key=lambda kv: _comp_sort_key(kv[0]))
-    n = max(len(CAMPOS_KEYS), len(comps))
-    rows = [
-        '<row r="1">' + _txt("A1", "Campo") + _txt("B1", "Valor")
-        + _txt("D1", "CEsp") + _txt("E1", "Competencia específica") + "</row>"
-    ]
-    for i in range(n):
-        r = 2 + i
-        cells = ""
-        if i < len(CAMPOS_KEYS):
-            k = CAMPOS_KEYS[i]
-            cells += _txt(f"A{r}", k) + _txt(f"B{r}", campos.get(k, ""))
-        if i < len(comps):
-            cells += _txt(f"D{r}", comps[i][0]) + _txt(f"E{r}", comps[i][1])
-        rows.append(f'<row r="{r}">{cells}</row>')
-    return (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
-        f'<worksheet xmlns="{_NS_MAIN}" xmlns:r="{_NS_REL}">'
-        f'<dimension ref="A1:E{n + 1}"/>'
-        '<sheetViews><sheetView workbookViewId="0"/></sheetViews>'
-        '<sheetFormatPr defaultRowHeight="15"/>'
-        '<cols><col min="1" max="1" width="26" customWidth="1"/>'
-        '<col min="2" max="2" width="90" customWidth="1"/>'
-        '<col min="4" max="4" width="7" customWidth="1"/>'
-        '<col min="5" max="5" width="90" customWidth="1"/></cols>'
-        f'<sheetData>{"".join(rows)}</sheetData>'
-        '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>'
-        "</worksheet>"
-    )
-
-
-def _sheet_path(zf: zipfile.ZipFile) -> str | None:
-    wb = zf.read("xl/workbook.xml").decode("utf-8")
-    m = re.search(rf'<sheet[^>]*name="{re.escape(SHEET_NAME)}"[^>]*r:id="([^"]+)"', wb)
-    if not m:
-        return None
-    rels = zf.read("xl/_rels/workbook.xml.rels").decode("utf-8")
-    t = re.search(rf'<Relationship[^>]*Id="{re.escape(m.group(1))}"[^>]*Target="([^"]+)"', rels)
-    tgt = t.group(1).lstrip("/")
-    return tgt if tgt.startswith("xl/") else "xl/" + tgt.replace("../", "")
-
-
-def _registrar_hoja(zf: zipfile.ZipFile) -> tuple[str, dict[str, bytes]]:
-    """Da de alta una hoja nueva al final del libro. Devuelve (ruta de la hoja,
-    partes del paquete modificadas)."""
-    names = set(zf.namelist())
-    n = 1
-    while f"xl/worksheets/sheet{n}.xml" in names:
-        n += 1
-    path = f"xl/worksheets/sheet{n}.xml"
-
-    rels = zf.read("xl/_rels/workbook.xml.rels").decode("utf-8")
-    rid_n = max([int(x) for x in re.findall(r'Id="rId(\d+)"', rels)] or [0]) + 1
-    rid = f"rId{rid_n}"
-    rels = rels.replace(
-        "</Relationships>",
-        f'<Relationship Id="{rid}" Type="{_REL_WORKSHEET}" Target="worksheets/sheet{n}.xml"/>'
-        "</Relationships>",
-    )
-
-    wb = zf.read("xl/workbook.xml").decode("utf-8")
-    sheet_id = max([int(x) for x in re.findall(r'<sheet [^>]*sheetId="(\d+)"', wb)] or [0]) + 1
-    wb = wb.replace(
-        "</sheets>", f'<sheet name="{SHEET_NAME}" sheetId="{sheet_id}" r:id="{rid}"/></sheets>', 1
-    )
-
-    ct = zf.read("[Content_Types].xml").decode("utf-8")
-    ct = ct.replace(
-        "</Types>", f'<Override PartName="/{path}" ContentType="{_CT_WORKSHEET}"/></Types>'
-    )
-
-    parts = {
-        "xl/_rels/workbook.xml.rels": rels.encode("utf-8"),
-        "xl/workbook.xml": wb.encode("utf-8"),
-        "[Content_Types].xml": ct.encode("utf-8"),
-    }
-
-    # docProps/app.xml: nº de hojas y su nombre en TitlesOfParts (lo usa el
-    # Explorador de Windows; Excel no lo exige, así que si no cuadra se deja).
-    if "docProps/app.xml" in names:
-        try:
-            app = zf.read("docProps/app.xml").decode("utf-8")
-            n_hojas = len(re.findall(r"<sheet ", wb)) - 1  # sin contar la nueva
-            m = re.search(r"(<HeadingPairs>.*?<vt:i4>)(\d+)(</vt:i4>)", app, re.S)
-            tp = re.search(r'(<TitlesOfParts><vt:vector size=")(\d+)(" baseType="lpstr">)(.*?)(</vt:vector>)', app, re.S)
-            if m and tp and int(m.group(2)) == n_hojas:
-                app = app[: m.start(2)] + str(n_hojas + 1) + app[m.end(2):]
-                tp = re.search(r'(<TitlesOfParts><vt:vector size=")(\d+)(" baseType="lpstr">)(.*?)(</vt:vector>)', app, re.S)
-                items = re.findall(r"<vt:lpstr>.*?</vt:lpstr>", tp.group(4), re.S)
-                items.insert(n_hojas, f"<vt:lpstr>{SHEET_NAME}</vt:lpstr>")
-                app = (
-                    app[: tp.start()] + tp.group(1) + str(len(items)) + tp.group(3)
-                    + "".join(items) + tp.group(5) + app[tp.end():]
-                )
-                parts["docProps/app.xml"] = app.encode("utf-8")
-        except Exception:
-            pass
-    return path, parts
-
-
-def save_info_familias(source: Any, campos: dict[str, str], competencias: dict[str, str]) -> bytes:
-    payload = _read_bytes(source)
-    src = zipfile.ZipFile(BytesIO(payload))
-    path = _sheet_path(src)
-    replacements: dict[str, bytes] = {}
-    nueva = path is None
-    if nueva:
-        path, replacements = _registrar_hoja(src)
-    replacements[path] = _sheet_xml(campos, competencias).encode("utf-8")
-
-    out = BytesIO()
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
-        for item in src.infolist():
-            dst.writestr(item, replacements.get(item.filename, src.read(item.filename)))
-        if nueva:
-            dst.writestr(path, replacements[path])
-    return out.getvalue()
 
 
 # ---------------------------------------------------------------------------
