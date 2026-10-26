@@ -778,6 +778,20 @@ def _generar_docx() -> bytes:
     )
 
 
+def _tabla_html(headers, rows, *, alto=None) -> str:
+    """Tabla HTML de solo lectura a todo el ancho (el estilo de «Copiar tabla
+    (Word)»); con `alto`, con barra de desplazamiento. Sustituye a st.dataframe
+    donde en algunos navegadores el <canvas> de Streamlit salía en negro."""
+    from tools.situaciones_informe import render_word_table_html
+
+    tabla = render_word_table_html(headers, rows).replace(
+        '<table style="border-collapse:collapse;">',
+        '<table style="border-collapse:collapse;width:100%;font-size:0.9rem;">', 1,
+    )
+    estilo = f"max-height:{alto}px;overflow-y:auto;" if alto else ""
+    return f'<div style="{estilo}overflow-x:auto;margin-bottom:0.6rem">{tabla}</div>'
+
+
 def _pestanas(key, titulos):
     """Pestañas de una página. Con `key` + `on_change="rerun"` la pestaña activa
     se conserva entre reruns (Añadir/Borrar/Actualizar no devuelven a la
@@ -1028,6 +1042,8 @@ def _ajuste_pesos_ipf(il_rows, ce_list, ce_ced, ce_p, sits):
     horas como restricción, itera (IPF) hasta aproximar los pesos P de los
     criterios y los PIL de los indicadores. No toca las tablas: el profesor
     decide si carga la propuesta."""
+    from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+    from tools.situaciones_informe import AGGRID_GRID_CSS
     from tools.ajuste_pesos import (
         instrumentos_presentes,
         reparto_horario,
@@ -1062,16 +1078,33 @@ def _ajuste_pesos_ipf(il_rows, ce_list, ce_ced, ce_p, sits):
 
     with col_obj:
         st.markdown('<div class="mini-label">Distribución de pesos por instrumento (deben sumar 100 %)</div>', unsafe_allow_html=True)
-        ed = st.data_editor(
-            ss.ipf_obj_df, hide_index=True, use_container_width=True, key="ipf_obj_ed",
-            column_config={
-                "Instrumento": st.column_config.TextColumn(disabled=True),
-                "Objetivo (%)": st.column_config.NumberColumn(
-                    min_value=0.0, max_value=100.0, step=0.5, format="%.1f"
-                ),
-            },
+        # AgGrid y no st.data_editor: en algunos navegadores las tablas nativas
+        # de Streamlit (dibujadas en <canvas>) salían en negro.
+        _ogb = GridOptionsBuilder.from_dataframe(ss.ipf_obj_df)
+        _ogb.configure_default_column(editable=False, resizable=True, sortable=False, filter=False)
+        _ogb.configure_column("Instrumento", flex=1, minWidth=180)
+        _ogb.configure_column(
+            "Objetivo (%)", editable=True, width=120, type=["numericColumn"],
+            valueParser=JsCode(
+                "function(p){var n=parseFloat(String(p.newValue).replace(',','.'));"
+                "return isNaN(n)?0:Math.min(100,Math.max(0,Math.round(n*10)/10))}"
+            ),
+            valueFormatter=JsCode("function(p){return p.value==null?'':Number(p.value).toFixed(1)}"),
         )
-        obj = {r["Instrumento"]: float(r["Objetivo (%)"] or 0.0) for _, r in ed.iterrows()}
+        _ogb.configure_grid_options(rowHeight=30)
+        _og = AgGrid(
+            ss.ipf_obj_df, gridOptions=_ogb.build(), update_on=[("cellValueChanged", 300)],
+            allow_unsafe_jscode=True, fit_columns_on_grid_load=False, custom_css=AGGRID_GRID_CSS,
+            height=56 + 30 * len(ss.ipf_obj_df), theme="balham",
+            key="ipf_obj_grid_" + "|".join(ies),
+        )
+        ed = pd.DataFrame(_og["data"])
+        if ed.empty or "Objetivo (%)" not in ed.columns:
+            ed = ss.ipf_obj_df
+        obj = {
+            r["Instrumento"]: 0.0 if pd.isna(r["Objetivo (%)"]) else float(r["Objetivo (%)"] or 0.0)
+            for _, r in ed.iterrows()
+        }
         suma = sum(obj.values())
         suma_ok = abs(suma - 100) <= 0.5
         st.caption(
@@ -1087,16 +1120,18 @@ def _ajuste_pesos_ipf(il_rows, ce_list, ce_ced, ce_p, sits):
         st.markdown('<div class="mini-label">Sugerencia</div>', unsafe_allow_html=True)
         _info = {r["IL"]: r for r in il_rows}
         _tab_p, _tab_il = st.tabs([f"P por CE ({len(ce_list)})", f"PIL por IL ({len(pil)})"])
-        _tab_p.dataframe(
-            pd.DataFrame([{"CE": ce, "P sugerido": pce.get(ce, 0)} for ce in ce_list]),
-            hide_index=True, use_container_width=True, height=240,
+        _tab_p.markdown(
+            _tabla_html(["CE", "P sugerido"], [[ce, f"{pce.get(ce, 0):g}"] for ce in ce_list],
+                        alto=260),
+            unsafe_allow_html=True,
         )
-        _tab_il.dataframe(
-            pd.DataFrame([
-                {"IL": il, "CE": _info.get(il, {}).get("CE", ""), "PIL sugerido": v}
-                for il, v in pil.items()
-            ]),
-            hide_index=True, use_container_width=True, height=240,
+        _tab_il.markdown(
+            _tabla_html(
+                ["IL", "CE", "PIL sugerido"],
+                [[il, _info.get(il, {}).get("CE", ""), f"{v:g}"] for il, v in pil.items()],
+                alto=260,
+            ),
+            unsafe_allow_html=True,
         )
 
     b1, b2, b3 = st.columns(3)
@@ -2070,7 +2105,7 @@ if page == "Diseño de la programación":
         # ─────── PESTAÑA: DISTRIBUCIÓN DE PORCENTAJES POR CE Y SA ───────
         with _tab_dist:
             st.caption("Distribución de porcentajes por criterios de evaluación y situaciones de aprendizaje.")
-            from st_aggrid import AgGrid, ColumnsAutoSizeMode, GridOptionsBuilder
+            from st_aggrid import AgGrid, GridOptionsBuilder
             from tools.indicadores_logro import matriz_sa_ce
             from tools.situaciones_informe import (
                 _fmt_pct2,
@@ -2129,14 +2164,14 @@ if page == "Diseño de la programación":
                 _gb = GridOptionsBuilder.from_dataframe(_mx_df)
                 _gb.configure_default_column(
                     editable=False, resizable=True, sortable=False, filter=False,
-                    minWidth=64, cellStyle={"textAlign": "center"},
+                    width=84, minWidth=84, cellStyle={"textAlign": "center"},
                 )
                 _gb.configure_column("Título", hide=True)
                 _gb.configure_column("SA", pinned="left", width=56, tooltipField="Título",
                                      cellStyle={"fontWeight": "600", "textAlign": "center"})
-                _gb.configure_column("Total (IL)", pinned="right", width=92,
+                _gb.configure_column("Total (IL)", pinned="right", width=116,
                                      cellStyle={"fontWeight": "600", "textAlign": "center"})
-                _gb.configure_column("% SA (horas)", pinned="right", width=104,
+                _gb.configure_column("% SA (horas)", pinned="right", width=136,
                                      cellStyle={"fontWeight": "600", "textAlign": "center"})
                 _gb.configure_grid_options(
                     enableBrowserTooltips=True, tooltipShowDelay=300, rowHeight=28,
@@ -2144,8 +2179,9 @@ if page == "Diseño de la programación":
                 )
                 AgGrid(
                     _mx_df, gridOptions=_gb.build(), allow_unsafe_jscode=True,
+                    # Anchos fijos: el ajuste automático (FIT_CONTENTS) se calcula
+                    # con la pestaña aún oculta y recortaba los valores.
                     fit_columns_on_grid_load=False,
-                    columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
                     custom_css=AGGRID_GRID_CSS,
                     height=min(430, 34 + 28 * len(_body)),
                     theme="balham", update_on=[], key="mx_grid",
@@ -2182,10 +2218,7 @@ if page == "Diseño de la programación":
             )
             _iec1, _iec2 = st.columns([2, 2.3], gap="large")
             with _iec1:
-                st.dataframe(
-                    pd.DataFrame(_ie_rows, columns=_ie_headers),
-                    use_container_width=True, hide_index=True,
-                )
+                st.markdown(_tabla_html(_ie_headers, _ie_rows), unsafe_allow_html=True)
                 components.html(
                     build_html_table_copy_html(
                         render_word_table_html(_ie_headers, _ie_rows),
@@ -2709,22 +2742,16 @@ elif page == "Información a familias":
                 )
                 _peso = dict(_calc["competencias"])
                 _cdo = ss.cur.get("comp_descriptores", {})
-                st.dataframe(
-                    pd.DataFrame(
+                st.markdown(
+                    _tabla_html(
+                        ["Nº", "Competencia específica", "Descriptores", "Peso"],
                         [
-                            {
-                                "Nº": n,
-                                "Competencia específica": _comp_txt.get(n, ""),
-                                "Descriptores": _cdo.get(n, ""),
-                                "Peso": f"{_peso[n] * 100:.2f} %".replace(".", ","),
-                            }
+                            [n, _comp_txt.get(n, ""), _cdo.get(n, ""),
+                             f"{_peso[n] * 100:.2f} %".replace(".", ",")]
                             for n in _nums
-                        ]
+                        ],
                     ),
-                    use_container_width=True, hide_index=True,
-                    column_config={
-                        "Competencia específica": st.column_config.TextColumn(width="large"),
-                    },
+                    unsafe_allow_html=True,
                 )
 
         with _tab_cal:
