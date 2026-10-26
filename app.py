@@ -321,6 +321,7 @@ with st.sidebar:
 from tools import curriculo as cur
 from tools.indicadores_logro import recompute as il_recompute
 from tools.info_familias import CAMPOS_KEYS as FAM_CAMPOS
+from tools.programacion_aula_editor import desde_formato_antiguo
 from tools.proyecto import DATOS_CAMPOS, SA_CAMPOS, estado_vacio, guardar_proyecto, leer_proyecto
 from tools.situaciones_aprendizaje import TRIMESTRES
 
@@ -391,7 +392,9 @@ def _cargar_estado(estado: dict, nombre: str) -> None:
     ss.pa_campos_datos = list(DATOS_CAMPOS)
     ss.pa_sa_campos = list(SA_CAMPOS)
     ss.pa_sa_cols = estado["pa_sa_cols"]
-    ss.pa_acts = estado["pa_acts"]
+    ss.pa_acts = estado["pa_acts"] or desde_formato_antiguo(
+        estado.get("pa_acts_antiguas", []), ss.il_rows
+    )
     ss.pa_sa_edits = {}
 
     ss.fam_campos = {k: estado["fam_campos"].get(k, "") for k in FAM_CAMPOS}
@@ -400,6 +403,7 @@ def _cargar_estado(estado: dict, nombre: str) -> None:
     for _k in (
         "prog_out", "sa_grid_rows", "ce_rows", "il_pending", "pa_docx",
         "consist_seen", "fam_docx", "prog_msg", "ipf_obj_df", "il_filtro_sa",
+        "pa_il_dialog",
     ):
         ss.pop(_k, None)
     # ...los widgets con estado propio (familias, campos de aula, datos
@@ -408,7 +412,7 @@ def _cargar_estado(estado: dict, nombre: str) -> None:
     # este proyecto, o se vuelve a proponer el reparto automático si no tiene).
     for _k in [
         k for k in list(ss.keys())
-        if k.startswith(("fam_w_", "pad_", "pasa_", "ses_tr", "ses_d"))
+        if k.startswith(("fam_w_", "pad_", "pasa_", "ses_tr", "ses_d", "paact_", "pa_new_"))
         or k in ("ses_loc", "ses_loc_on")
     ]:
         ss.pop(_k, None)
@@ -744,7 +748,7 @@ def _resumen_por_sa_docx():
             ],
             "actividades": [
                 {
-                    "A": a["A"], "DA": a["DA"],
+                    "A": a["A"], "DA": a["titulo"], "IE": a["IE"], "IL": a["ILs"],
                     "valor_programacion": a["valor_prog"], "valor_sa": a["valor_sa"],
                 }
                 for a in val if a.get("SA") == n
@@ -1228,25 +1232,19 @@ def _info_card_html(label, value):
     )
 
 
-def _resumen_actividad_dialog(row_idx, pending, il_info, elementos):
-    """Panel flotante de solo lectura: al pulsar el IL de una actividad, un
-    resumen explícito de qué trabaja ese indicador (contenidos y transversales
-    descritos, instrumento de evaluación, agente evaluador, CC)."""
+def _resumen_il_dialog(il, il_info, elementos):
+    """Panel flotante de solo lectura: resumen explícito de qué trabaja un
+    indicador (contenidos y transversales descritos, instrumento de
+    evaluación, agente evaluador, CC)."""
     from html import escape as _esc
 
     ss = st.session_state
-    if not (0 <= row_idx < len(pending)):
-        ss.pa_act_dialog = None
-        return
-    il = str(pending[row_idx].get("IL") or "")
     info = il_info.get(il, {})
     con_desc = _describir_codigos(info.get("CON"), elementos.get("contenidos", []), "cod")
     ct_desc = _describir_codigos(info.get("CT"), elementos.get("transversales", []), "num")
 
     def _cerrar():
-        ss.pa_act_dialog = None
-        ss.pa_pick_seen = ""
-        ss.pa_nonce = ss.get("pa_nonce", 0) + 1
+        ss.pa_il_dialog = None
 
     @st.dialog(f"Resumen del indicador {il or '—'}", width="large", on_dismiss=_cerrar)
     def _panel():
@@ -1306,6 +1304,7 @@ def _aplicar_regeneracion(issues):
         limpiar_codigos,
         quitar_actividades_huerfanas,
         quitar_il_de_ce,
+        repartir_pendientes,
     )
 
     rows = list(ss.get("il_pending") or ss.il_rows)
@@ -1320,6 +1319,10 @@ def _aplicar_regeneracion(issues):
     ss.pop("il_pending", None)
     ss.il_nonce = ss.get("il_nonce", 0) + 1
     ss.pa_acts = quitar_actividades_huerfanas(ss.get("pa_acts", []), ss.il_rows)
+    if any(it["clave"] in ("act_huerfanas", "reparto_pendiente") for it in issues):
+        ss.pa_acts = repartir_pendientes(ss.pa_acts)
+    for _k in [k for k in ss.keys() if str(k).startswith("paact_")]:
+        ss.pop(_k, None)
     ss.pop("prog_out", None)
     ss.pop("pa_docx", None)
 
@@ -2363,16 +2366,21 @@ elif page == "Programación de aula":
     if not _hay_proyecto():
         st.info("Abre un proyecto o crea uno nuevo en la barra de arriba para empezar.")
     else:
-        from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
-        from tools.programacion_aula_editor import recompute_actividades, valores_actividades
+        from tools.programacion_aula_editor import (
+            codigos,
+            enlaces_por_il,
+            fraccion_por_enlace,
+            nuevo_id,
+            repartir_iguales,
+            reparto_pendiente,
+            valores_actividades,
+        )
         from tools.situaciones_informe import (
-            AGGRID_GRID_CSS,
             build_html_table_copy_html,
             render_word_table_html,
         )
 
         ss = st.session_state
-        ss.setdefault("pa_nonce", 0)
 
         # Indicadores de logro ya recalculados (IL/SA/PIL rellenos). Se toma el
         # estado canónico (il_rows); si hay edición reciente en Diseño con IL
@@ -2381,8 +2389,6 @@ elif page == "Programación de aula":
         _ilp = ss.get("il_pending")
         if _ilp and all(r.get("IL") for r in _ilp):
             _il_state = _ilp
-        _il_sa = {r["IL"]: r["SA"] for r in _il_state}
-        _pil_por_il = {r["IL"]: float(r["PIL"] or 0) for r in _il_state}
         _ce_p = {r["CE"]: r["P"] for r in ss.get("ce_rows", [])} or dict(ss.get("il_ce_p", {}))
 
         _sa_opts = _sa_pares()
@@ -2447,6 +2453,9 @@ elif page == "Programación de aula":
                                                    on_change=_pad_sync, args=(k,))
 
         # ── PESTAÑA: Actividades por situación de aprendizaje
+        # Una actividad = SA + instrumento de evaluación + título + los IL de
+        # esa SA con ese instrumento que evalúa. Si un IL está en varias
+        # actividades, se pide repartir su peso (PA, en %) entre ellas.
         with _tab_pact:
             if _tab_pact.open:
                 _lbl = {sa: f"{sa}: {d}" for sa, d in _sa_opts}
@@ -2454,155 +2463,179 @@ elif page == "Programación de aula":
                     "Situación de aprendizaje", [sa for sa, _ in _sa_opts],
                     format_func=lambda s: _lbl.get(s, str(s)), key="pa_sa_sel",
                 )
-                _ils_sa = [r["IL"] for r in _il_state if r["SA"] == sa_sel]
-
-                _acts_sa = [a for a in ss.pa_acts if a.get("IL") in _ils_sa]
-                _acts_otras = [a for a in ss.pa_acts if a.get("IL") not in _ils_sa]
-
-                # Cada IL de la SA debe tener al menos una fila: si no hay ninguna
-                # actividad para ese IL, se muestra una en blanco para rellenar
-                # (peso vacío = fila de plantilla que no se guarda hasta tocarla).
-                _con_act = {a["IL"] for a in _acts_sa}
-                _acts_sa_disp = _acts_sa + [
-                    {"IL": il, "A": "", "DA": "", "PA": None}
-                    for il in _ils_sa if il not in _con_act
-                ]
-
-                st.markdown(
-                    f'<div class="mini-label">Actividades de los IL de esta SA '
-                    f"({', '.join(_ils_sa) or '—'}) · cada IL trae al menos una fila para rellenar "
-                    "· A (código) y PA%/FACTOR se recalculan al pulsar Actualizar</div>",
-                    unsafe_allow_html=True,
-                )
-                pc1, pc2, pc3, pc4 = st.columns([1.4, 1.3, 1.2, 3])
-                _add_il = pc1.selectbox("IL", _ils_sa or ["—"], key="pa_add_il", label_visibility="collapsed")
-                _pa_add = pc2.button("Añadir actividad", use_container_width=True, key="pa_add")
-                _pa_del = pc3.button("Borrar marcadas", use_container_width=True, key="pa_del")
-                _pa_upd = pc4.button("Actualizar", use_container_width=True, type="primary", key="pa_upd")
-
-                _rc = recompute_actividades(_acts_sa_disp, _pil_por_il)
+                _ils_sa_rows = [r for r in _il_state if r["SA"] == sa_sel]
+                _ies_sa = list(dict.fromkeys(r["IE"] for r in _ils_sa_rows if r.get("IE")))
                 _il_info = {r["IL"]: r for r in _il_state}
-                _adf = pd.DataFrame(
-                    [
-                        {"X": False, "IL": r["IL"], "A": r["A"], "DA": r["DA"],
-                         "PA": r["PA"],
-                         "PA%": None if r["PA%"] is None else r["PA%"] * 100,
-                         "FACTOR": r["FACTOR"],
-                         "IE": _il_info.get(r["IL"], {}).get("IE", ""),
-                         "_DIL": _il_info.get(r["IL"], {}).get("DIL", ""),
-                         "_pick": "",  # aviso de clic en IL (resumen del indicador)
-                         }
-                        for r in _rc
-                    ],
-                    columns=["X", "IL", "A", "DA", "PA", "PA%", "FACTOR", "IE", "_DIL", "_pick"],
-                )
-                _adf["X"] = _adf["X"].astype(bool)
-                _agb = GridOptionsBuilder.from_dataframe(_adf)
-                _agb.configure_default_column(editable=True, resizable=True, sortable=False, filter=False)
-                _agb.configure_column("X", headerName="", width=44, pinned="left",
-                                      cellRenderer="agCheckboxCellRenderer",
-                                      cellEditor="agCheckboxCellEditor", cellDataType="boolean")
-                _agb.configure_column(
-                    "IL", width=84, cellDataType="text", cellEditor="agSelectCellEditor",
-                    cellEditorParams={"values": _ils_sa},
-                    headerTooltip="Un clic: resumen del indicador · doble clic: cambiar de IL",
-                    tooltipValueGetter=JsCode(
-                        "function(p){return (p.data && p.data._DIL) ? p.data._DIL : '';}"
-                    ),
-                    onCellClicked=JsCode(
-                        # Un solo clic abre el resumen; si llega un segundo clic enseguida
-                        # (doble clic para reasignar el IL), se cancela y no se abre nada.
-                        "function(p){"
-                        "if (p.node.__dlgTimer) { clearTimeout(p.node.__dlgTimer); p.node.__dlgTimer = null; return; }"
-                        "p.node.__dlgTimer = setTimeout(function(){"
-                        "p.node.__dlgTimer = null;"
-                        "p.node.setDataValue('_pick', String(p.rowIndex) + '|' + Date.now());"
-                        "}, 280);"
-                        "}"
-                    ),
-                )
-                _agb.configure_column("A", editable=False, width=96)
-                _agb.configure_column("DA", headerName="Descripción", flex=1, minWidth=240,
-                                      cellDataType="text", tooltipField="DA")
-                _agb.configure_column("PA", headerName="Peso", width=80, cellDataType="number", type=["numericColumn"])
-                _agb.configure_column("PA%", editable=False, width=84,
-                                      valueFormatter=JsCode("function(p){return p.value==null?'':Number(p.value).toFixed(1)+' %'}"))
-                _agb.configure_column("FACTOR", editable=False, width=90,
-                                      valueFormatter=JsCode("function(p){return p.value==null?'':Number(p.value).toFixed(3)}"))
-                _agb.configure_column("IE", editable=False, width=140, tooltipField="IE")
-                _agb.configure_column("_DIL", hide=True)
-                _agb.configure_column("_pick", hide=True)
-                _agb.configure_grid_options(enableBrowserTooltips=True, rowHeight=30)
-                _agrid = AgGrid(
-                    _adf, gridOptions=_agb.build(), update_on=[("cellValueChanged", 300)],
-                    allow_unsafe_jscode=True, fit_columns_on_grid_load=False,
-                    custom_css=AGGRID_GRID_CSS,
-                    height=max(190, min(430, 95 + 33 * max(len(_adf), 1))),
-                    theme="balham", key=f"pa_acts_grid_{sa_sel}_{ss.pa_nonce}",
-                )
-                _ag = pd.DataFrame(_agrid["data"])
-                if _ag.empty or "IL" not in _ag.columns:
-                    _ag = _adf.copy()
-                _pend = [
-                    {
-                        "IL": "" if pd.isna(r.get("IL")) else str(r.get("IL")),
-                        "A": "" if pd.isna(r.get("A")) else str(r.get("A")),
-                        "DA": "" if pd.isna(r.get("DA")) else str(r.get("DA")),
-                        "PA": None if r.get("PA") in (None, "") or pd.isna(r.get("PA")) else float(r.get("PA")),
-                    }
-                    for _, r in _ag.iterrows()
-                ]
-                _delf = [str(r.get("X")).strip().lower() in ("true", "1", "yes") for _, r in _ag.iterrows()]
+                _acts_sa = [a for a in ss.pa_acts if a.get("SA") == sa_sel]
+                _cod = codigos(ss.pa_acts)
+                _frac = fraccion_por_enlace(ss.pa_acts)
+                _enl = enlaces_por_il(ss.pa_acts)
+                _pend = set(reparto_pendiente(ss.pa_acts))
 
-                # Clic en la celda IL: abre el resumen explícito del indicador
-                # (contenidos y transversales descritos, instrumento, agente
-                # evaluador, CC). Mismo mecanismo que el panel de tics de CON/CT.
-                if "_pick" in _ag.columns:
-                    for _pi, _mark in enumerate(_ag["_pick"].tolist()):
-                        _mark = "" if pd.isna(_mark) else str(_mark)
-                        if _mark and _mark != ss.get("pa_pick_seen"):
-                            ss.pa_pick_seen = _mark
-                            ss.pa_act_dialog = {"row_idx": _pi}
-                            break
+                def _il_lbl(il):
+                    d = str(_il_info.get(il, {}).get("DIL") or "")
+                    return f"{il} — {d[:80] + '…' if len(d) > 80 else d}" if d else il
 
-                if ss.get("pa_act_dialog"):
-                    _resumen_actividad_dialog(
-                        ss.pa_act_dialog["row_idx"], _pend, _il_info,
-                        ss.get("elementos", {}),
-                    )
+                def _ils_de(ie):
+                    return [r["IL"] for r in _ils_sa_rows if r.get("IE") == ie]
 
-                def _real(r):
-                    return bool(str(r.get("DA") or "").strip()) or r.get("PA") not in (None, "", 0)
-
-                def _fold(pend):
-                    return _acts_otras + [
-                        {"IL": p["IL"], "DA": p["DA"], "PA": p["PA"], "A": ""}
-                        for p in pend if str(p.get("IL") or "").strip() and _real(p)
-                    ]
-
-                def _sig(rows):
-                    return [(a.get("IL"), a.get("DA"), a.get("PA")) for a in rows]
-
-                def _commit_acts(nuevas_sa):
-                    ss.pa_acts = _fold(nuevas_sa)
-                    ss.pa_nonce += 1
+                def _set_acts(nuevas):
+                    ss.pa_acts = nuevas
                     ss.pop("prog_out", None)
                     ss.pop("pa_docx", None)
-                    st.rerun()
 
-                if _pa_add and _ils_sa:
-                    _commit_acts(_pend + [{"IL": _add_il, "A": "", "DA": "", "PA": 1}])
-                elif _pa_del and any(_delf):
-                    _commit_acts([p for p, d in zip(_pend, _delf) if not d])
-                elif _pa_upd:
-                    _commit_acts(_pend)
-                else:
-                    # Guarda en vivo lo que se va escribiendo (sin remontar la rejilla).
-                    _folded = _fold(_pend)
-                    if _sig(_folded) != _sig(ss.pa_acts):
-                        ss.pa_acts = _folded
-                        ss.pop("prog_out", None)
-                        ss.pop("pa_docx", None)
+                def _sin_widgets(pref):
+                    for k in [k for k in ss.keys() if str(k).startswith(pref)]:
+                        ss.pop(k, None)
+
+                # ── Nueva actividad
+                with st.expander("➕ Nueva actividad", expanded=not _acts_sa):
+                    if not _ils_sa_rows:
+                        st.info("Esta situación de aprendizaje aún no tiene indicadores de logro "
+                                "(se asignan en «Diseño de la programación» › Indicadores de logro).")
+                    elif not _ies_sa:
+                        st.info("Los indicadores de esta situación de aprendizaje no tienen "
+                                "instrumento de evaluación: asígnaselo en «Indicadores de logro».")
+                    else:
+                        nc1, nc2 = st.columns([1, 2])
+                        _n_ie = nc1.selectbox("Instrumento de evaluación", _ies_sa,
+                                              key=f"pa_new_ie_{sa_sel}")
+                        _n_tit = nc2.text_input("Título", key=f"pa_new_tit_{sa_sel}")
+                        _n_ils = st.multiselect(
+                            "Indicadores de logro que evalúa (los de esta SA con ese instrumento)",
+                            _ils_de(_n_ie), format_func=_il_lbl,
+                            key=f"pa_new_ils_{sa_sel}_{_n_ie}",
+                        )
+                        if st.button("Crear actividad", type="primary", key=f"pa_new_btn_{sa_sel}",
+                                     disabled=not (_n_tit.strip() and _n_ils)):
+                            _set_acts(ss.pa_acts + [{
+                                "id": nuevo_id(ss.pa_acts), "SA": sa_sel, "IE": _n_ie,
+                                "titulo": _n_tit.strip(),
+                                "ils": [{"IL": il, "PA": None} for il in _n_ils],
+                            }])
+                            _sin_widgets(f"pa_new_tit_{sa_sel}")
+                            _sin_widgets(f"pa_new_ils_{sa_sel}_")
+                            # los IL que ya estaban en otra actividad: a repartir de nuevo
+                            _sin_widgets("paact_pa_")
+                            st.rerun()
+
+                # ── Actividades de la SA
+                def _act_sync(aid):
+                    tit = ss.get(f"paact_tit_{aid}", "")
+                    sel = ss.get(f"paact_ils_{aid}", [])
+                    nuevas = []
+                    for a in ss.pa_acts:
+                        if a["id"] == aid:
+                            pa = {e["IL"]: e.get("PA") for e in a.get("ils", [])}
+                            a = dict(a, titulo=str(tit).strip(),
+                                     ils=[{"IL": il, "PA": pa.get(il)} for il in sel])
+                        nuevas.append(a)
+                    _set_acts(nuevas)
+                    _sin_widgets("paact_pa_")
+
+                if _acts_sa:
+                    if any(e["IL"] in _pend for a in _acts_sa for e in a.get("ils", [])):
+                        st.warning("Hay indicadores que se evalúan en varias actividades: "
+                                   "reparte su peso en «Reparto de pesos», más abajo.")
+                    st.markdown("**Actividades de esta situación de aprendizaje**")
+                for a in _acts_sa:
+                    aid = a["id"]
+                    with st.container(border=True):
+                        h1, h2 = st.columns([6, 1])
+                        h1.markdown(f"**{_cod[aid]}** · {a.get('IE') or '—'}")
+                        if h2.button("Borrar", key=f"paact_del_{aid}", use_container_width=True):
+                            _set_acts([x for x in ss.pa_acts if x["id"] != aid])
+                            _sin_widgets(f"paact_tit_{aid}")
+                            _sin_widgets(f"paact_ils_{aid}")
+                            _sin_widgets("paact_pa_")
+                            st.rerun()
+                        _ka, _ki = f"paact_tit_{aid}", f"paact_ils_{aid}"
+                        _sel = [e["IL"] for e in a.get("ils", [])]
+                        if _ka not in ss:
+                            ss[_ka] = a.get("titulo", "")
+                        if _ki not in ss:
+                            ss[_ki] = _sel
+                        st.text_input("Título", key=_ka, on_change=_act_sync, args=(aid,))
+                        # (+ los que ya tenga aunque ya no casen: la coherencia avisa)
+                        _opts = _ils_de(a.get("IE"))
+                        _opts = _opts + [il for il in _sel if il not in _opts]
+                        st.multiselect("Indicadores de logro", _opts, format_func=_il_lbl,
+                                       key=_ki, on_change=_act_sync, args=(aid,))
+                        if _sel:
+                            st.caption(" · ".join(
+                                f"{il}: falta repartir" if il in _pend else
+                                f"{il}: {_frac.get((aid, il), 0) * 100:.0f} %"
+                                + (" (compartido)" if len(_enl.get(il, [])) > 1 else "")
+                                for il in _sel
+                            ))
+                        else:
+                            st.caption("Sin indicadores: esta actividad no cuenta en la nota.")
+
+                # ── Reparto de pesos de los IL evaluados en varias actividades
+                _compartidos = [
+                    r["IL"] for r in _ils_sa_rows if len(_enl.get(r["IL"], [])) > 1
+                ]
+                if _compartidos:
+                    st.markdown("**Reparto de pesos** · indicadores que se evalúan en varias "
+                                "actividades: indica qué parte (%) se evalúa en cada una; "
+                                "tiene que sumar 100 %.")
+
+                    def _pa_sync(il):
+                        vals = {
+                            a["id"]: ss.get(f"paact_pa_{a['id']}_{il}")
+                            for a, _e in _enl.get(il, [])
+                        }
+                        nuevas = []
+                        for a in ss.pa_acts:
+                            if a["id"] in vals:
+                                a = dict(a, ils=[
+                                    dict(e, PA=vals[a["id"]]) if e["IL"] == il else e
+                                    for e in a.get("ils", [])
+                                ])
+                            nuevas.append(a)
+                        _set_acts(nuevas)
+
+                    for il in _compartidos:
+                        with st.container(border=True):
+                            st.markdown(f"**{_il_lbl(il)}**")
+                            _links = _enl[il]
+                            _rc = st.columns(len(_links) + 1)
+                            for (a, e), col in zip(_links, _rc):
+                                _k = f"paact_pa_{a['id']}_{il}"
+                                if _k not in ss:
+                                    ss[_k] = None if e.get("PA") is None else float(e["PA"])
+                                _sa_txt = "" if a.get("SA") == sa_sel else f" (SA {a.get('SA')})"
+                                col.number_input(
+                                    f"{_cod[a['id']]}{_sa_txt} · {a.get('titulo') or 'sin título'}",
+                                    min_value=0.0, max_value=100.0, step=5.0, format="%.1f",
+                                    key=_k, on_change=_pa_sync, args=(il,),
+                                )
+                            _suma = sum(float(e.get("PA") or 0) for _a, e in _links)
+                            with _rc[-1]:
+                                if il in _pend:
+                                    st.markdown(f":red[Suma {_suma:.1f} % · falta repartir]")
+                                    if st.button("Repartir a partes iguales", key=f"paact_eq_{il}",
+                                                 use_container_width=True):
+                                        _set_acts(repartir_iguales(ss.pa_acts, [il]))
+                                        _sin_widgets("paact_pa_")
+                                        st.rerun()
+                                else:
+                                    st.markdown(f":green[Suma {_suma:.1f} % ✓]")
+
+                # ── Indicadores de la SA sin actividad y resumen de un indicador
+                _sin_act = [r["IL"] for r in _ils_sa_rows if r["IL"] not in _enl]
+                if _sin_act:
+                    st.caption("Indicadores de esta SA que aún no evalúa ninguna actividad: "
+                               + ", ".join(_sin_act))
+                if _ils_sa_rows:
+                    rc1, rc2 = st.columns([3, 1])
+                    _il_ver = rc1.selectbox("Resumen de un indicador", [r["IL"] for r in _ils_sa_rows],
+                                            format_func=_il_lbl, key=f"pa_ver_il_{sa_sel}")
+                    rc2.markdown("<div style='height:1.75rem'></div>", unsafe_allow_html=True)
+                    if rc2.button("Ver resumen", use_container_width=True, key=f"pa_ver_btn_{sa_sel}"):
+                        ss.pa_il_dialog = _il_ver
+                if ss.get("pa_il_dialog"):
+                    _resumen_il_dialog(ss.pa_il_dialog, _il_info, ss.get("elementos", {}))
 
                 # Campos de la programación de aula para esta SA. Se emparejan por
                 # título (las ediciones de la sesión se guardan por título de SA y
@@ -2651,18 +2684,17 @@ elif page == "Programación de aula":
                 )
                 _val = valores_actividades(ss.pa_acts, _il_state, _ce_p)
                 _val_sa = [a for a in _val if a.get("SA") == sa_sel]
-                _rheaders = ["A", "Descripción", "Valor s/ programación", "Valor s/ SA"]
+                _rheaders = ["A", "Actividad", "Instrumento", "IL", "Valor s/ programación", "Valor s/ SA"]
                 _rrows = [
                     [
-                        a["A"], a["DA"],
+                        a["A"], a["titulo"], a["IE"], a["ILs"],
                         f"{a['valor_prog'] * 100:.2f}".replace(".", ",") + " %",
                         f"{a['valor_sa'] * 100:.2f}".replace(".", ",") + " %",
                     ]
                     for a in _val_sa
                 ]
                 if _rrows:
-                    st.dataframe(pd.DataFrame(_rrows, columns=_rheaders),
-                                use_container_width=True, hide_index=True)
+                    st.markdown(_tabla_html(_rheaders, _rrows), unsafe_allow_html=True)
                     components.html(
                         build_html_table_copy_html(
                             render_word_table_html(_rheaders, _rrows),

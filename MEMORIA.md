@@ -59,7 +59,7 @@ run_app.bat            # = .venv\Scripts\python.exe -m streamlit run app.py --se
 | `tools/proyecto.py` | Proyecto `.sqlite`: esquema, `estado_vacio`, `leer_proyecto`, `leer_meta`, `guardar_proyecto`. Listas fijas `DATOS_CAMPOS`, `SA_CAMPOS`. |
 | `tools/consistencia.py` | `revisar()` coherencia (currículo + SA) y autoarreglos (`add_il_para_ce`, `quitar_il_de_ce`, `limpiar_codigos`, `quitar_actividades_huerfanas`). |
 | `tools/indicadores_logro.py` | Cálculos de IL: `recompute` (agrupa por CE, numera IL, PIL%), `matriz_sa_ce`, `peso_por_ie`, `resumen_por_ce`, `usados_en_il`. |
-| `tools/programacion_aula_editor.py` | `recompute_actividades`, `valores_actividades`. |
+| `tools/programacion_aula_editor.py` | Actividades (SA + IE + título + varios IL): `fraccion_por_enlace`, `reparto_pendiente`, `repartir_iguales`, `enlaces_invalidos`, `codigos` (A1, A2… por SA), `valores_actividades`, `desde_formato_antiguo`. |
 | `tools/situaciones_aprendizaje.py` | `Situacion`, `TRIMESTRES`, `acumulado_por_trimestre`. |
 | `tools/programacion_aula.py` | Word de programación de aula con **docxtpl** (`run_programacion_aula(datos_generales, situaciones, plantilla, resumen_por_sa=…)`). |
 | `tools/info_familias.py` | Información a familias: `CAMPOS`, cálculos (`datos_familias`) y Word (`generar_docx`). |
@@ -97,7 +97,10 @@ fechas de cada evaluación en ISO, horas por día, festivo local),
 hoja transpuesta P_Aula_SA), `criterios_peso(ce, peso)`,
 `indicadores(orden, ce, pil, descripcion, descriptores, contenidos,
 transversales, ie, cc, ae, sa)` (CON/CT/DO como texto `"A.1.1, A.1.2"`; el IL se
-recalcula con `recompute`), `actividades(orden, il, descripcion, peso)`,
+recalcula con `recompute`), `actividades(id, orden, sa, ie, titulo)` +
+`actividad_indicadores(actividad, il, peso, orden)` (schema 2; en el schema 1
+`actividades(orden, il, descripcion, peso)`, una actividad por IL: al abrir se
+convierte con `desde_formato_antiguo`, PA pasa a % del IL),
 `datos_generales(campo, valor)`, `familias(campo, valor)`.
 
 - Se escribe entero cada vez (`guardar_proyecto`: base nueva en memoria +
@@ -112,12 +115,12 @@ recalcula con `recompute`), `actividades(orden, il, descripcion, peso)`,
 - **IL** indicador de logro (`4.2.1`, automático y correlativo dentro del CE) · **PIL** peso · **PIL%** = PIL/ΣPIL del CE · **DIL** descripción · **DO** descriptores operativos.
 - **CON** contenidos de la materia · **CT** contenidos transversales.
 - **IE** instrumento de evaluación · **CC** criterio de calificación · **AE** agente evaluador.
-- **A** código de actividad (`<IL>.n`) · **DA** descripción · **PA** peso · **PA%** = PA/ΣPA del IL · **FACTOR** = PIL·PA%.
+- **A** código de actividad (`A1`, `A2`… dentro de su SA) · **PA** parte (%) de un IL que se evalúa en una actividad: si el IL está en una sola actividad cuenta 100 %; si está en varias, el docente reparte (PA vacío = pendiente).
 - Competencia específica de un CE = su primer número (`2.4` → 2); su peso = Σ %CE de sus criterios.
 
 ### Fórmulas de peso (réplicas de las dinámicas/DAX del antiguo Excel)
 - Peso de un IL sobre la programación = `(PIL/ΣPIL del CE) · (P/ΣP)`.
-- Valor de una actividad sobre la programación = `PA% · (PIL/ΣPIL del CE) · (P/ΣP)`; sobre la SA = ese valor / Σ de la SA.
+- Valor de una actividad sobre la programación = Σ de sus IL de `PA% · (PIL/ΣPIL del CE) · (P/ΣP)`; sobre la SA = ese valor / Σ de la SA.
 
 ## 5. Guardado
 
@@ -132,7 +135,7 @@ recalcula con `recompute`), `actividades(orden, il, descripcion, peso)`,
 - **Barra lateral** (`st.radio` key `active_page`): 4 páginas, más el origen del currículo.
   - **Diseño de la programación** — pestañas: Situaciones de aprendizaje · Sesiones por evaluación · Criterios de evaluación · Indicadores de logro · Ajuste de pesos · Distribución CE × SA · Peso final por instrumento.
   - **Contenidos** — Contenidos de la materia (con su bloque) · Contenidos transversales (🟢 asignado a algún IL / 🔴 no).
-  - **Programación de aula** — botón Generar Word (+ plantilla opcional) · pestañas Datos generales · Actividades por SA (incluye campos de aula de la SA y resumen de actividades).
+  - **Programación de aula** — botón Generar Word (+ plantilla opcional) · pestañas Datos generales · Actividades por SA: «Nueva actividad» (instrumento → título → IL de la SA con ese instrumento), tarjeta por actividad (título e IL editables, Borrar), «Reparto de pesos» de los IL en varias actividades (número por actividad, debe sumar 100 %, botón «Repartir a partes iguales»), IL sin actividad, resumen de un IL (diálogo), campos de aula de la SA y resumen de actividades.
   - **Información a familias** — botón Generar/Descargar Word (+ plantilla opcional) · aviso de campos vacíos · pestañas Competencias específicas (solo lectura, del currículo) · Calificación y promoción · Atención individualizada · Vista previa por SA.
 - **Barra global** arriba: `segmented_control` (`proy_modo`) **Abrir proyecto** (uploader `.sqlite`) / **Nuevo proyecto** (Etapa → Curso → Materia + Crear), y el botón **«Guardar proyecto»** (HTML/JS propio, `_guardar_archivo_html`): `showSaveFilePicker` en Chrome/Edge, descarga normal en Firefox/Safari. Prefijo `AAAAMMDD_HHMM_` calculado **en JS al hacer clic**; `_nombre_sin_sello` evita acumular prefijos. Nombre base: el del archivo abierto o el id de la materia.
 - El proyecto de salida (`prog_out`) se **recalcula solo** cuando falta; **cualquier edición hace `pop("prog_out")`**. Si hay incoherencias, se muestra `_dlg_coherencia` una vez por proyecto cargado (`consist_seen`, se marca al abrir el diálogo).
@@ -154,6 +157,7 @@ recalcula con `recompute`), `actividades(orden, il, descripcion, peso)`,
 - **`st.dialog`**: un `on_click` dentro del diálogo solo relanza el diálogo (es un fragment) → botón imperativo + `st.rerun(scope="app")`. **Dos `st.dialog` en la misma ejecución revientan** (`StreamlitDuplicateElementId`): `_dlg_coherencia` es un envoltorio que lo abre como mucho una vez por ejecución.
 - **Campos de texto sin botón Actualizar** (calculadora de sesiones, Datos generales, campos de aula de la SA, familias) llevan `on_change` que copia el valor al estado e invalida `prog_out` **antes** del rerun (`_invalidar_prog_out`, `_pad_sync`, `_pasa_sync`, `_fam_sync`): la barra de arriba calcula el proyecto antes de que la página vuelva a pintar los campos.
 - **Filtro por SA en Indicadores de logro** (`il_filtro_sa`): filtro externo de AgGrid (`doesExternalFilterPass`), no se recorta el DataFrame. La rejilla va con `data_return_mode="AS_INPUT"` (por defecto st_aggrid devuelve **solo las filas filtradas** y se perderían al Actualizar/Borrar). Cambiar el filtro remonta la rejilla (va en la `key`), así que antes consolida lo pendiente en `il_rows`. Con filtro, «Añadir» crea los IL en esa SA.
+- **Actividades**: los widgets de cada tarjeta (`paact_tit_<id>`, `paact_ils_<id>`, `paact_pa_<id>_<IL>`) se inicializan en sesión antes de pintarlos y se sincronizan con `on_change`; cuando cambia el reparto desde fuera (crear, borrar, repartir) se borran las claves `paact_pa_` para que se relean. Las actividades apuntan al IL **por su código**: se diseñan con las programaciones ya entregadas (IL bloqueados todo el curso), así que no se reenlazan al renumerar; si algo cambia, la coherencia avisa (IL inexistente, de otra SA o de otro instrumento) y el arreglo los quita.
 - EV en la rejilla de SA va como **texto** (con desplegable numérico daba «invalid number»).
 - Selectores con valores fuera de lista: `_with_existing()` añade los valores presentes.
 - **Maquetación del Word de familias** (`_fila` en `tools/info_familias.py`): filas que no se parten, cabecera repetida y «conservar con el siguiente». **Ojo:** `cell.text = …` borra el formato del párrafo → aplicar `_fila` después. Para revisar páginas: Word por COM → PDF y PyMuPDF.
@@ -173,6 +177,7 @@ Variables: datos generales (`materia`, `curso`, `grupo`, `docente`, `numero_alum
 - Sin logotipos institucionales (b64569e).
 - Contenidos, transversales y DO se marcan con ticks en un diálogo, no a mano.
 - **Información a familias** (2026-10-15), a partir del PowerPoint de inspección (Orden EDU/424/2024 art. 12 y 425/2024 art. 10): Word con plantilla; contenido = resumen por criterio + **una página por SA** con CE → sus IL (**sin el texto del IL**) + **tarta de instrumentos de cada SA**; **no** calcular el peso de las competencias clave a partir de DO (por ahora). Desde 2026-10-26 el texto de las competencias específicas sale del currículo.
+- **Actividades (2026-10-26)**: una actividad es de una SA y un instrumento, tiene título y evalúa varios IL de esa SA con ese instrumento. Si un IL está en varias actividades se **insta a repartir** su peso (aviso en la pestaña + aviso de coherencia con arreglo «a partes iguales»). Se diseñan después de entregar la programación: los IL ya no cambian.
 - Las medidas de atención para familias son texto **general**: nunca se usa `alumnos_atencion_individualizada` (datos de alumnos concretos).
 
 ## 9. Observaciones / posibles problemas detectados (sin verificar)
@@ -209,3 +214,4 @@ Formato: `AAAA-MM-DD — qué se hizo (commit si aplica)`.
 - 2026-10-26 — **Cambio de modelo: fuera el Excel.** `curriculo.db` (catálogos IE/CC/AE rellenados) + `tools/curriculo.py` (descarga de GitHub con caché) + proyecto `.sqlite` (`tools/proyecto.py`). Barra Abrir/Nuevo proyecto (etapa → curso → materia), «Guardar proyecto». Coherencia contra el currículo (CE, CON, CT, DO) con arreglos. DO con ticks. Competencias específicas del currículo en familias. Word de aula generado desde la sesión. Borradas todas las escrituras del ZIP del xlsx, `tools/sellado.py` y `openpyxl`. Arreglados: doble `st.dialog` al cerrar el aviso con la X, y Datos generales / campos de aula que podían no llegar al archivo guardado. Probado con AppTest: proyecto nuevo (Biología 1º ESO) y el Excel de ejemplo convertido (Ámbito Científico-Tecnológico 4º, 100 % de coincidencia de códigos): 4 páginas sin errores, los dos Word, ida y vuelta idéntica.
 - 2026-10-26 — Tablas que salían en negro (Ajuste de pesos, Peso final por instrumento, Competencias específicas, Vista previa por SA) pasadas a HTML/AgGrid; anchos fijos en Distribución CE × SA. Comprobado con capturas de Chrome headless.
 - 2026-10-26 — Indicadores de logro: filtro por SA (Todas / SA n / Sin SA). Probado con AppTest (sin pérdida de filas) y captura en Chrome headless.
+- 2026-10-26 — **Cambio de modelo en actividades**: actividad = SA + instrumento + título + varios IL, con reparto de peso (%) de los IL compartidos. Schema 2 del proyecto (`actividad_indicadores`), conversión automática de los proyectos antiguos (mismos valores salvo actividades antiguas con peso vacío, que ahora cuentan el 100 % de su IL). Word: tabla de actividades con instrumento e IL. Coherencia: IL que no corresponden y repartos pendientes. Probado con AppTest (crear, repartir 70/30, editar título, guardar y releer, Word) y captura en Chrome.

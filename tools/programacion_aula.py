@@ -128,9 +128,10 @@ def _norm_titulo(value: Any) -> str:
 
 
 def build_tabla_actividades(tpl: DocxTemplate, actividades: list[dict]):
-    headers = ["A", "Descripción", "Valor s/ programación", "Valor s/ SA"]
+    headers = ["A", "Actividad", "Instrumento", "IL", "Valor s/ programación", "Valor s/ SA"]
     rows = [
-        [a.get("A"), a.get("DA"), _fmt_pct(a.get("valor_programacion", 0.0)), _fmt_pct(a.get("valor_sa", 0.0))]
+        [a.get("A"), a.get("DA"), a.get("IE"), a.get("IL"),
+         _fmt_pct(a.get("valor_programacion", 0.0)), _fmt_pct(a.get("valor_sa", 0.0))]
         for a in actividades
     ]
     return _build_table_subdoc(

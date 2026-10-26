@@ -8,7 +8,9 @@ generar se comprueba que:
 * cada criterio de evaluación de la materia tiene al menos un indicador;
 * los indicadores usan criterios, contenidos (CON), transversales (CT) y
   descriptores operativos (DO) que existen en el currículo de la materia;
-* las actividades apuntan a indicadores de logro que existen.
+* las actividades evalúan indicadores de logro que existen y que son de su
+  situación de aprendizaje y de su instrumento de evaluación;
+* si un indicador se evalúa en varias actividades, su peso está repartido.
 
 Si algo no cuadra, la app avisa y deja elegir: revisarlo a mano o aplicar los
 arreglos automáticos (``aplicar_arreglos``).
@@ -18,6 +20,13 @@ from __future__ import annotations
 
 import re
 from typing import Any
+
+from tools.programacion_aula_editor import (
+    enlaces_invalidos,
+    quitar_enlaces_invalidos,
+    repartir_iguales,
+    reparto_pendiente,
+)
 
 
 def _s(v: Any) -> str:
@@ -108,19 +117,30 @@ def revisar(
                 "datos": {campo: malos},
             })
 
-    # 4) actividades cuyo IL ya no existe
-    ils = {_s(r.get("IL")) for r in il_rows if _s(r.get("IL"))}
-    act_huerf = sorted({
-        _s(a.get("IL")) for a in actividades
-        if _s(a.get("IL")) and _s(a.get("IL")) not in ils
-    })
-    if act_huerf:
+    # 4) actividades con IL que no existen o no son de su SA / instrumento
+    malos = enlaces_invalidos(actividades, il_rows)
+    if malos:
         issues.append({
             "clave": "act_huerfanas",
-            "titulo": "Actividades apuntando a indicadores inexistentes",
-            "detalle": "IL sin indicador: " + ", ".join(act_huerf) + ". El arreglo las quita.",
+            "titulo": "Actividades con indicadores que no les corresponden",
+            "detalle": "; ".join(
+                f"«{_s(a.get('titulo')) or 'sin título'}» (SA {a.get('SA')}): {il} {motivo}"
+                for a, il, motivo in malos
+            ) + ". El arreglo quita esos indicadores de la actividad.",
             "autofix": "drop_acts",
-            "datos": act_huerf,
+            "datos": None,
+        })
+
+    # 5) IL evaluados en varias actividades sin repartir su peso
+    pend = reparto_pendiente(actividades)
+    if pend:
+        issues.append({
+            "clave": "reparto_pendiente",
+            "titulo": "Indicadores evaluados en varias actividades sin repartir su peso",
+            "detalle": "IL: " + ", ".join(pend) + ". Repártelo en «Programación de aula» "
+            "o deja que el arreglo lo reparta a partes iguales.",
+            "autofix": "repartir",
+            "datos": pend,
         })
 
     return issues
@@ -160,5 +180,10 @@ def limpiar_codigos(il_rows: list[dict], malos: dict[str, list[str]]) -> list[di
 
 
 def quitar_actividades_huerfanas(acts: list[dict], il_rows: list[dict]) -> list[dict]:
-    ils = {_s(r.get("IL")) for r in il_rows if _s(r.get("IL"))}
-    return [a for a in acts if _s(a.get("IL")) in ils]
+    """Quita de cada actividad los IL que no existen o no son de su SA /
+    instrumento (la actividad se queda, aunque sea sin indicadores)."""
+    return quitar_enlaces_invalidos(acts, il_rows)
+
+
+def repartir_pendientes(acts: list[dict]) -> list[dict]:
+    return repartir_iguales(acts)

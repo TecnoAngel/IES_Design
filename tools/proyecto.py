@@ -23,7 +23,11 @@ Estado (dict)::
     il_rows              [{"CE", "PIL", "DIL", "DO", "CON", "CT", "IE", "CC", "AE", "SA"}]
     pa_datos             {campo: valor}         (orden: DATOS_CAMPOS)
     pa_sa_cols           [{"nombre", "valores": {campo: valor}}]  una por SA
-    pa_acts              [{"IL", "DA", "PA"}]
+    pa_acts              [{"id", "SA", "IE", "titulo", "ils": [{"IL", "PA"}]}]
+                         (ver tools.programacion_aula_editor)
+    pa_acts_antiguas     [{"IL", "DA", "PA"}]  solo al leer un proyecto con
+                         actividades de un único IL (schema 1); la app las
+                         convierte con ``desde_formato_antiguo``
     fam_campos           {clave: texto}
 """
 
@@ -33,7 +37,7 @@ import re
 import sqlite3
 from datetime import date, datetime
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 
 # Campos de «Datos generales» y de cada SA en la programación de aula (los
 # que usa la plantilla Word; mismo orden que tenían las hojas del Excel).
@@ -74,7 +78,13 @@ CREATE TABLE indicadores (
   sa INTEGER
 );
 CREATE TABLE actividades (
-  orden INTEGER PRIMARY KEY, il TEXT NOT NULL, descripcion TEXT NOT NULL DEFAULT '', peso REAL
+  id INTEGER PRIMARY KEY, orden INTEGER NOT NULL, sa INTEGER,
+  ie TEXT NOT NULL DEFAULT '', titulo TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE actividad_indicadores (
+  actividad INTEGER NOT NULL REFERENCES actividades(id) ON DELETE CASCADE,
+  il TEXT NOT NULL, peso REAL, orden INTEGER NOT NULL,
+  PRIMARY KEY (actividad, il)
 );
 CREATE TABLE datos_generales (campo TEXT PRIMARY KEY, valor TEXT NOT NULL DEFAULT '');
 CREATE TABLE familias (campo TEXT PRIMARY KEY, valor TEXT NOT NULL DEFAULT '');
@@ -199,12 +209,27 @@ def leer_proyecto(payload: bytes) -> dict:
                 "ie, cc, ae, sa FROM indicadores ORDER BY orden"
             )
         ]
-        acts = [
-            {"IL": il, "A": "", "DA": d, "PA": _num(p)}
-            for il, d, p in con.execute(
-                "SELECT il, descripcion, peso FROM actividades ORDER BY orden"
-            )
-        ]
+        acts, antiguas = [], []
+        cols_act = {c[1] for c in con.execute("PRAGMA table_info(actividades)")}
+        if "il" in cols_act:  # schema 1: una actividad = un IL
+            antiguas = [
+                {"IL": il, "DA": d, "PA": _num(p)}
+                for il, d, p in con.execute(
+                    "SELECT il, descripcion, peso FROM actividades ORDER BY orden"
+                )
+            ]
+        else:
+            por_id = {}
+            for i, sa, ie, t in con.execute(
+                "SELECT id, sa, ie, titulo FROM actividades ORDER BY orden"
+            ):
+                por_id[i] = {"id": i, "SA": sa, "IE": ie or "", "titulo": t or "", "ils": []}
+                acts.append(por_id[i])
+            for a, il, p in con.execute(
+                "SELECT actividad, il, peso FROM actividad_indicadores ORDER BY actividad, orden"
+            ):
+                if a in por_id:
+                    por_id[a]["ils"].append({"IL": il, "PA": _num(p)})
         datos = {k: "" for k in DATOS_CAMPOS}
         datos.update(dict(con.execute("SELECT campo, valor FROM datos_generales")))
 
@@ -224,6 +249,7 @@ def leer_proyecto(payload: bytes) -> dict:
             "pa_datos": datos,
             "pa_sa_cols": pa_sa_cols,
             "pa_acts": acts,
+            "pa_acts_antiguas": antiguas,
             "fam_campos": dict(con.execute("SELECT campo, valor FROM familias")),
         }
     except sqlite3.DatabaseError as exc:
@@ -318,14 +344,20 @@ def guardar_proyecto(
                     for i, r in enumerate(estado.get("il_rows", []))
                 ],
             )
-            con.executemany(
-                "INSERT INTO actividades VALUES (?, ?, ?, ?)",
-                [
-                    (i, _s(a.get("IL")), _s(a.get("DA")), _num(a.get("PA")))
-                    for i, a in enumerate(estado.get("pa_acts", []))
-                    if _s(a.get("IL"))
-                ],
-            )
+            for orden, a in enumerate(estado.get("pa_acts", [])):
+                con.execute(
+                    "INSERT INTO actividades VALUES (?, ?, ?, ?, ?)",
+                    (int(a["id"]), orden, _num(a.get("SA")), _s(a.get("IE")), _s(a.get("titulo"))),
+                )
+                vistos_il: set[str] = set()
+                for j, e in enumerate(a.get("ils", [])):
+                    il = _s(e.get("IL"))
+                    if il and il not in vistos_il:
+                        vistos_il.add(il)
+                        con.execute(
+                            "INSERT INTO actividad_indicadores VALUES (?, ?, ?, ?)",
+                            (int(a["id"]), il, _num(e.get("PA")), j),
+                        )
             con.executemany(
                 "INSERT INTO datos_generales VALUES (?, ?)",
                 [(k, _s(v)) for k, v in estado.get("pa_datos", {}).items()],

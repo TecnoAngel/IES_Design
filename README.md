@@ -77,9 +77,13 @@ en verde si ya están asignados a algún indicador y en rojo si no.
 ### Programación de aula
 
 - **Datos generales** del grupo.
-- **Actividades por situación de aprendizaje**: actividades de cada indicador con
-  peso, PA% y factor; resumen de su valor sobre la programación y sobre la SA;
-  y los campos de la programación de aula de esa SA.
+- **Actividades por situación de aprendizaje**: cada actividad se crea eligiendo
+  un instrumento de evaluación (de los que usan los indicadores de esa SA), un
+  título y los indicadores de logro que evalúa (los de esa SA con ese
+  instrumento). Si un indicador se evalúa en varias actividades, la app pide
+  repartir su peso entre ellas (en %, sumando 100). Resumen del valor de cada
+  actividad sobre la programación y sobre la SA, y los campos de la
+  programación de aula de esa SA.
 - **Generar programación de aula (Word)** con la plantilla por defecto
   (`templates/programacion_aula_template.docx`) o con una propia.
 
