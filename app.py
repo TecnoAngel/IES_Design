@@ -399,7 +399,7 @@ def _cargar_estado(estado: dict, nombre: str) -> None:
     # al cambiar de proyecto, se descartan los estados canónicos derivados
     for _k in (
         "prog_out", "sa_grid_rows", "ce_rows", "il_pending", "pa_docx",
-        "consist_seen", "fam_docx", "prog_msg", "ipf_obj_df",
+        "consist_seen", "fam_docx", "prog_msg", "ipf_obj_df", "il_filtro_sa",
     ):
         ss.pop(_k, None)
     # ...los widgets con estado propio (familias, campos de aula, datos
@@ -1853,6 +1853,26 @@ if page == "Diseño de la programación":
                 unsafe_allow_html=True,
             )
 
+            # Filtro por SA: es un filtro de la rejilla (las filas ocultas siguen
+            # en ella y se devuelven todas, ver data_return_mode). Al cambiarlo
+            # se consolida lo tecleado, porque la rejilla se remonta.
+            def _il_filtro_cambia():
+                ss = st.session_state
+                if ss.get("il_pending") is not None:
+                    ss.il_rows = il_recompute(ss.il_pending, ce_ced, ce_list)
+                ss.pop("prog_out", None)
+
+            _filtro_opts = ["Todas"] + [str(x) for x in sa_options] + ["Sin SA"]
+            if st.session_state.get("il_filtro_sa") not in _filtro_opts:
+                st.session_state.il_filtro_sa = "Todas"
+            filtro_sa = st.columns([1, 3])[0].selectbox(
+                "Filtrar por SA", _filtro_opts, key="il_filtro_sa",
+                format_func=lambda v: v if v in ("Todas", "Sin SA") else f"SA {v}",
+                on_change=_il_filtro_cambia,
+            )
+            # valor de la columna SA (texto) que pasa el filtro; None = todas
+            _filtro_val = {"Todas": None, "Sin SA": ""}.get(filtro_sa, filtro_sa)
+
             ac1, ac2, ac3, ac4, ac5 = st.columns([1.7, 0.8, 1.5, 1.6, 1.3])
             add_ce = ac1.selectbox("Criterio", ce_list, key="il_add_ce", label_visibility="collapsed")
             add_n = ac2.number_input("nº", 1, 20, 1, key="il_add_n", label_visibility="collapsed")
@@ -1877,7 +1897,11 @@ if page == "Diseño de la programación":
                 columns=["X", "CE", "CED", "IL", "PIL", "PIL%", "DIL", "DO",
                          "CON", "CT", "IE", "CC", "AE", "SA", "__shade", "_pick"],
             )
-            _ce_seq = list(dict.fromkeys(r["CE"] for r in st.session_state.il_rows))
+            # sombreado alterno por CE contando solo las filas que se ven
+            _ce_seq = list(dict.fromkeys(
+                ce for ce, sa in zip(il_df["CE"], il_df["SA"])
+                if _filtro_val is None or sa == _filtro_val
+            ))
             _ce_shade = {ce: (i % 2 == 1) for i, ce in enumerate(_ce_seq)}
             il_df["__shade"] = il_df["CE"].map(lambda c: bool(_ce_shade.get(c)))
             il_df["X"] = il_df["X"].astype(bool)
@@ -1947,17 +1971,28 @@ if page == "Diseño de la programación":
                 ),
                 rowHeight=30,
             )
+            if _filtro_val is not None:
+                gb.configure_grid_options(
+                    isExternalFilterPresent=JsCode("function(){return true}"),
+                    doesExternalFilterPass=JsCode(
+                        "function(n){return n.data && String(n.data.SA ?? '') === "
+                        + repr(_filtro_val) + "}"
+                    ),
+                )
 
             grid = AgGrid(
                 il_df,
                 gridOptions=gb.build(),
+                # todas las filas, también las ocultas por el filtro de SA, y en
+                # su orden: «pending» y los índices de fila cuentan con ello.
+                data_return_mode="AS_INPUT",
                 update_on=[("cellValueChanged", 300)],
                 allow_unsafe_jscode=True,
                 fit_columns_on_grid_load=False,
                 custom_css=AGGRID_LINES_CSS,
                 height=430,
                 theme="balham",
-                key=f"il_grid_{st.session_state.il_nonce}",
+                key=f"il_grid_{st.session_state.il_nonce}_{filtro_sa}",
             )
 
             # Lo que hay ahora mismo en la rejilla (en su orden actual, sin agrupar).
@@ -2022,7 +2057,9 @@ if page == "Diseño de la programación":
                             "CE": add_ce, "CED": "", "IL": "", "PIL": 1, "DIL": "",
                             "DO": ", ".join(st.session_state.cur["ce_do"].get(add_ce, [])),
                             "CON": "", "CT": "",
-                            "IE": "", "CC": "", "AE": "", "SA": None,
+                            "IE": "", "CC": "", "AE": "",
+                            # con el filtro puesto, nace en esa SA (si no, no se vería)
+                            "SA": int(_filtro_val) if _filtro_val else None,
                         }
                     )
                 st.session_state.il_rows = il_recompute(base, ce_ced, ce_list)
