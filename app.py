@@ -2657,7 +2657,7 @@ elif page == "Información a familias":
             generar_docx,
             tabla_sa_filas,
         )
-        from tools.situaciones_informe import build_pie_png_simple, zebra_styler
+        from tools.situaciones_informe import build_pie_png_simple
 
         ss = st.session_state
 
@@ -2792,8 +2792,7 @@ elif page == "Información a familias":
                     pv1, pv2 = st.columns([3.2, 1.6], gap="medium")
                     with pv1:
                         if _r:
-                            st.dataframe(zebra_styler(pd.DataFrame(_r, columns=_h)),
-                                         use_container_width=True, hide_index=True)
+                            st.markdown(_tabla_html(_h, _r), unsafe_allow_html=True)
                             if _s["agentes"]:
                                 st.caption("Agente evaluador: " + "; ".join(
                                     f"{a} = {AGENTES.get(a, a)}" for a in _s["agentes"]))
