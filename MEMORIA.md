@@ -120,6 +120,7 @@ convierte con `desde_formato_antiguo`, PA pasa a % del IL),
 
 ### Fórmulas de peso (réplicas de las dinámicas/DAX del antiguo Excel)
 - Peso de un IL sobre la programación = `(PIL/ΣPIL del CE) · (P/ΣP)`.
+- **Factor iDoceo** de un IL en una actividad = `PIL · PA%` (fracción del IL en esa actividad). Solo se muestra en la tarjeta de la actividad; no va al Word.
 - Valor de una actividad sobre la programación = Σ de sus IL de `PA% · (PIL/ΣPIL del CE) · (P/ΣP)`; sobre la SA = ese valor / Σ de la SA.
 
 ## 5. Guardado
@@ -221,3 +222,4 @@ Formato: `AAAA-MM-DD — qué se hizo (commit si aplica)`.
 - 2026-10-26 — Arreglo: `KeyError: 'id'` en Actividades en Streamlit Cloud con una sesión abierta antes del despliegue (actividades con el formato viejo); se convierten tras la barra de abrir proyecto (10ff5c6).
 - 2026-10-27 — Repaso de `MEMORIA.md` y `README.md` tras los cambios de actividades (quitadas referencias a la antigua rejilla de actividades, `pa_nonce`, `pa_pick_seen`).
 - 2026-10-27 — Programación de aula: los campos de texto de cada SA pasan a su propia pestaña «Descripción SA» (entre Datos generales y Actividades) para descargar la de actividades. Probado con AppTest.
+- 2026-10-27 — Actividades: vuelve el **factor iDoceo** (`PIL · PA%`) en la línea de cada IL de la tarjeta (solo pantalla, no va al Word). Probado con AppTest.

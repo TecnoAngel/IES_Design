@@ -2623,10 +2623,17 @@ elif page == "Programación de aula":
                         st.multiselect("Indicadores de logro", _opts, format_func=_il_lbl,
                                        key=_ki, on_change=_act_sync, args=(aid,))
                         if _sel:
-                            st.caption(" · ".join(
+                            # Factor iDoceo = PIL · parte del IL en esta actividad
+                            # (solo de consulta: no va al Word).
+                            def _fac(il):
+                                f = float(_il_info.get(il, {}).get("PIL") or 0) * _frac.get((aid, il), 0)
+                                return f"{f:.2f}".replace(".", ",")
+
+                            st.caption(" | ".join(
                                 f"{il}: falta repartir" if il in _pend else
                                 f"{il}: {_frac.get((aid, il), 0) * 100:.0f} %"
                                 + (" (compartido)" if len(_enl.get(il, [])) > 1 else "")
+                                + f" · factor iDoceo {_fac(il)}"
                                 for il in _sel
                             ))
                         else:
