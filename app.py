@@ -2429,7 +2429,7 @@ elif page == "Programación de aula":
             )
 
         _tab_pad, _tab_pasa, _tab_pact = _pestanas(
-            "tabs_aula", ["Datos generales", "Campos de aula por SA",
+            "tabs_aula", ["Datos generales", "Descripción SA",
                           "Actividades por situación de aprendizaje"]
         )
 
