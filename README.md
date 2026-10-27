@@ -43,8 +43,10 @@ o `run_app.bat` (usa el python del `.venv` y el puerto 8502).
 
 Los códigos de la programación (criterios, contenidos, transversales,
 descriptores) tienen que existir en el currículo de la materia. Antes de guardar
-o generar el Word se revisa la coherencia; si algo no cuadra, puedes revisarlo a
-mano o aplicar los arreglos automáticos.
+o generar el Word se revisa la coherencia (también que cada actividad evalúe
+indicadores de su situación y de su instrumento, y que el peso de los
+indicadores evaluados en varias actividades esté repartido); si algo no cuadra,
+puedes revisarlo a mano o aplicar los arreglos automáticos.
 
 ## Funcionalidades
 
@@ -115,6 +117,9 @@ regenerarla, ejecuta `python -m tools.plantilla_familias`.
   si no hay, la del propio repositorio.
 - El proyecto es una base SQLite con solo lo del docente; la materia apunta al
   currículo por su identificador.
+- Los proyectos con el formato anterior de actividades (una actividad por
+  indicador) se convierten solos al abrirlos; una vez guardados con la versión
+  actual, ya no se abren con versiones anteriores de la app.
 - Hasta octubre de 2026 la app trabajaba sobre un Excel de programación con
   Power Pivot. Ya no se usa.
 

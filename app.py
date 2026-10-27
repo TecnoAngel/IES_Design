@@ -403,7 +403,7 @@ def _cargar_estado(estado: dict, nombre: str) -> None:
     for _k in (
         "prog_out", "sa_grid_rows", "ce_rows", "il_pending", "pa_docx",
         "consist_seen", "fam_docx", "prog_msg", "ipf_obj_df", "il_filtro_sa",
-        "pa_il_dialog",
+        "pa_il_dialog", "pa_sa_actual",
     ):
         ss.pop(_k, None)
     # ...los widgets con estado propio (familias, campos de aula, datos
@@ -2364,8 +2364,8 @@ elif page == "Contenidos":
 elif page == "Programación de aula":
     st.markdown(
         '<div class="panel-card"><h3>Programación de aula</h3>'
-        "<p>Datos generales del grupo, actividades por situación de aprendizaje y "
-        "campos de la programación de aula. Genera el documento Word con la "
+        "<p>Datos generales del grupo, campos de la programación de aula de cada "
+        "situación de aprendizaje y sus actividades. Genera el documento Word con la "
         "plantilla por defecto o con una tuya.</p></div>",
         unsafe_allow_html=True,
     )
@@ -2428,9 +2428,27 @@ elif page == "Programación de aula":
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             )
 
-        _tab_pad, _tab_pact = _pestanas(
-            "tabs_aula", ["Datos generales", "Actividades por situación de aprendizaje"]
+        _tab_pad, _tab_pasa, _tab_pact = _pestanas(
+            "tabs_aula", ["Datos generales", "Campos de aula por SA",
+                          "Actividades por situación de aprendizaje"]
         )
+
+        _lbl = {sa: f"{sa}: {d}" for sa, d in _sa_opts}
+        _nums_sa = [sa for sa, _ in _sa_opts]
+
+        def _sel_sa(key):
+            """Selector de SA. Las pestañas «Campos de aula» y «Actividades»
+            comparten la SA elegida (pa_sa_actual): cada una tiene su widget,
+            pero se inicializa con la última elegida en cualquiera de ellas."""
+            if ss.get("pa_sa_actual") in _nums_sa:
+                ss[key] = ss.pa_sa_actual
+            sel = st.selectbox(
+                "Situación de aprendizaje", _nums_sa,
+                format_func=lambda s: _lbl.get(s, str(s)), key=key,
+                on_change=lambda: ss.__setitem__("pa_sa_actual", ss[key]),
+            )
+            ss.pa_sa_actual = sel
+            return sel
 
         # ── PESTAÑA: Datos generales
         _LARGOS = {
@@ -2459,17 +2477,53 @@ elif page == "Programación de aula":
                         ss.pa_datos[k] = st.text_area(_hum(k), value=ss.pa_datos.get(k, ""), key=f"pad_{k}", height=90,
                                                    on_change=_pad_sync, args=(k,))
 
+        # ── PESTAÑA: Campos de la programación de aula de cada SA. Se emparejan
+        # por título (las ediciones de la sesión se guardan por título de SA y
+        # el proyecto las asigna a su SA al guardar).
+        with _tab_pasa:
+            if _tab_pasa.open:
+                import re as _re
+
+                sa_sel = _sel_sa("pa_sa_sel_campos")
+                _dsa_sel = next((d for n, d in _sa_opts if n == sa_sel), "")
+                _norm = lambda s: _re.sub(r"\s+", " ", str(s or "")).strip().lower()
+                _base = {}
+                for _e in ss.pa_sa_cols:
+                    if _norm(_e.get("valores", {}).get("titulo")) == _norm(_dsa_sel):
+                        _base = _e["valores"]
+                        break
+                _tri_sel = next((t for n, _d, t in _sa_datos() if n == sa_sel), "")
+                def _pasa_sync(dsa, campo, key):
+                    # Igual que _pad_sync, para los campos de aula de la SA.
+                    ss.pa_sa_edits.setdefault(dsa, dict(_base))[campo] = ss[key]
+                    ss.pop("prog_out", None)
+                    ss.pop("pa_docx", None)
+
+                _cur = ss.pa_sa_edits.get(_dsa_sel, dict(_base))
+                # titulo y trimestre son automáticos (de la tabla de situaciones)
+                _cur["titulo"] = _dsa_sel
+                _cur["trimestre"] = _tri_sel
+                _cc = st.columns(2)
+                _cc[0].text_input("Título", value=_dsa_sel, disabled=True, key=f"pasa_tit_{sa_sel}")
+                _cc[1].text_input("Trimestre", value=_tri_sel or "—", disabled=True, key=f"pasa_tri_{sa_sel}")
+                st.caption("Título y trimestre se toman de la tabla de situaciones de aprendizaje.")
+                for campo in ss.pa_sa_campos:
+                    if campo in ("titulo", "trimestre"):
+                        continue
+                    _cur[campo] = st.text_area(
+                        _hum(campo), value=_cur.get(campo, ""),
+                        key=f"pasa_{sa_sel}_{campo}", height=70,
+                        on_change=_pasa_sync, args=(_dsa_sel, campo, f"pasa_{sa_sel}_{campo}"),
+                    )
+                ss.pa_sa_edits[_dsa_sel] = _cur
+
         # ── PESTAÑA: Actividades por situación de aprendizaje
         # Una actividad = SA + instrumento de evaluación + título + los IL de
         # esa SA con ese instrumento que evalúa. Si un IL está en varias
         # actividades, se pide repartir su peso (PA, en %) entre ellas.
         with _tab_pact:
             if _tab_pact.open:
-                _lbl = {sa: f"{sa}: {d}" for sa, d in _sa_opts}
-                sa_sel = st.selectbox(
-                    "Situación de aprendizaje", [sa for sa, _ in _sa_opts],
-                    format_func=lambda s: _lbl.get(s, str(s)), key="pa_sa_sel",
-                )
+                sa_sel = _sel_sa("pa_sa_sel")
                 _ils_sa_rows = [r for r in _il_state if r["SA"] == sa_sel]
                 _ies_sa = list(dict.fromkeys(r["IE"] for r in _ils_sa_rows if r.get("IE")))
                 _il_info = {r["IL"]: r for r in _il_state}
@@ -2643,44 +2697,6 @@ elif page == "Programación de aula":
                         ss.pa_il_dialog = _il_ver
                 if ss.get("pa_il_dialog"):
                     _resumen_il_dialog(ss.pa_il_dialog, _il_info, ss.get("elementos", {}))
-
-                # Campos de la programación de aula para esta SA. Se emparejan por
-                # título (las ediciones de la sesión se guardan por título de SA y
-                # el proyecto las asigna a su SA al guardar).
-                import re as _re
-
-                _dsa_sel = next((d for n, d in _sa_opts if n == sa_sel), "")
-                _norm = lambda s: _re.sub(r"\s+", " ", str(s or "")).strip().lower()
-                _base = {}
-                for _e in ss.pa_sa_cols:
-                    if _norm(_e.get("valores", {}).get("titulo")) == _norm(_dsa_sel):
-                        _base = _e["valores"]
-                        break
-                _tri_sel = next((t for n, _d, t in _sa_datos() if n == sa_sel), "")
-                st.markdown("**Campos de la programación de aula para esta SA**")
-                def _pasa_sync(dsa, campo, key):
-                    # Igual que _pad_sync, para los campos de aula de la SA.
-                    ss.pa_sa_edits.setdefault(dsa, dict(_base))[campo] = ss[key]
-                    ss.pop("prog_out", None)
-                    ss.pop("pa_docx", None)
-
-                _cur = ss.pa_sa_edits.get(_dsa_sel, dict(_base))
-                # titulo y trimestre son automáticos (de la tabla de situaciones)
-                _cur["titulo"] = _dsa_sel
-                _cur["trimestre"] = _tri_sel
-                _cc = st.columns(2)
-                _cc[0].text_input("Título", value=_dsa_sel, disabled=True, key=f"pasa_tit_{sa_sel}")
-                _cc[1].text_input("Trimestre", value=_tri_sel or "—", disabled=True, key=f"pasa_tri_{sa_sel}")
-                st.caption("Título y trimestre se toman de la tabla de situaciones de aprendizaje.")
-                for campo in ss.pa_sa_campos:
-                    if campo in ("titulo", "trimestre"):
-                        continue
-                    _cur[campo] = st.text_area(
-                        _hum(campo), value=_cur.get(campo, ""),
-                        key=f"pasa_{sa_sel}_{campo}", height=70,
-                        on_change=_pasa_sync, args=(_dsa_sel, campo, f"pasa_{sa_sel}_{campo}"),
-                    )
-                ss.pa_sa_edits[_dsa_sel] = _cur
 
                 # ── Resumen de actividades de esta SA (dinámica de INFORMES)
                 st.divider()
