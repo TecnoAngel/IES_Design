@@ -310,6 +310,27 @@ st.markdown(
     .pa-tag.ok { background: #e3f3e6; color: #1e6b34; border-color: #9fd0a9; }
     .pa-tag.info { background: var(--jcyl-cream); color: #5c524a; border-color: var(--jcyl-line); }
     .pa-il-desc { font-size: 0.88rem; color: #5c524a; margin: 0.1rem 0 0.5rem 0; }
+    /* Tarjeta de actividad con el tono de su columna del cuaderno (las
+       variables --soft/--franja/--tinta se fijan por tarjeta en app.py). */
+    [class*="st-key-pacard_"] {
+        background: var(--soft) !important;
+        border-color: var(--franja) !important;
+        border-top: 6px solid var(--franja) !important;
+    }
+    [class*="st-key-pacard_"] .pa-act-cod { background: var(--tinta); }
+    [class*="st-key-pacard_"] .pa-act-ie { background: #fff; border-color: var(--franja); color: var(--tinta); }
+    /* Campos en blanco sobre el pastel, para que se lean como editables. */
+    [class*="st-key-pacard_"] [data-baseweb="input"],
+    [class*="st-key-pacard_"] [data-baseweb="input"] > div,
+    [class*="st-key-pacard_"] input,
+    [class*="st-key-pacard_"] [data-testid="stMultiSelect"] [role="group"] {
+        background: #fff !important;
+    }
+    [class*="st-key-pacard_"] [data-testid="stMultiSelect"] [data-tag] { background: var(--soft) !important; }
+    [class*="st-key-pacard_"] .pa-ils th { border-bottom-color: var(--franja) !important; }
+    [class*="st-key-pacard_"] .pa-ils td { border-bottom-color: rgba(34,28,24,0.08) !important; }
+    .pa-otras { font-size: 0.78rem; color: #5c524a; white-space: nowrap; }
+    .pa-otras .pa-tag { margin-left: 0.2rem; }
     /* Vista en el cuaderno (iDoceo / Additio): columnas pastel por actividad. */
     .cuad-wrap {
         overflow-x: auto; background: #fff; border: 1px solid var(--jcyl-line);
@@ -2774,9 +2795,41 @@ elif page == "Programación de aula":
                 def _pct(x):
                     return f"{x * 100:.0f} %"
 
+                # Un tono pastel por actividad, el mismo en su tarjeta, en las
+                # etiquetas «También en…» y en su columna de la vista del cuaderno.
+                _TONOS = [  # fondo, fondo suave, franja, texto (≥ 4,5:1 sobre blanco)
+                    ("#FCE8EC", "#FEF5F7", "#E9A3B1", "#8A2A3C"),
+                    ("#E3EEF9", "#F2F7FC", "#93B8DE", "#2A557F"),
+                    ("#E5F1E8", "#F3F8F4", "#9CC9A8", "#2E6640"),
+                    ("#FDEBDD", "#FEF6EF", "#EDB48A", "#8A4A1C"),
+                    ("#EEE7F7", "#F7F3FB", "#B9A3DB", "#553A80"),
+                    ("#FBF3D5", "#FDFAEC", "#E2C766", "#6E5A10"),
+                ]
+                _tono = {a["id"]: _TONOS[i % len(_TONOS)] for i, a in enumerate(_acts_sa)}
+                st.markdown(
+                    "<style>" + "".join(
+                        f".st-key-pacard_{aid} {{ --bg:{bg}; --soft:{soft}; --franja:{fr}; --tinta:{ti}; }}"
+                        # casillas de «Reparto de pesos» de esta actividad
+                        f'[class*="st-key-paact_pa_{aid}_"] [data-testid="stNumberInputContainer"] {{'
+                        f" background:{bg} !important; border-left:6px solid {fr} !important; }}"
+                        f'[class*="st-key-paact_pa_{aid}_"] [data-testid="stNumberInputContainer"] * {{'
+                        " background:transparent !important; }"
+                        for aid, (bg, soft, fr, ti) in _tono.items()
+                    ) + "</style>",
+                    unsafe_allow_html=True,
+                )
+
+                def _tag_act(x):
+                    """Código de otra actividad en su color (de otra SA: neutro)."""
+                    if x.get("SA") != sa_sel:
+                        return f'<span class="pa-tag info">{_cod[x["id"]]} (SA {x.get("SA")})</span>'
+                    bg, _s, fr, ti = _tono[x["id"]]
+                    return (f'<span class="pa-tag" style="background:{bg};border-color:{fr};color:{ti}">'
+                            f'{_cod[x["id"]]}</span>')
+
                 for a in _acts_sa:
                     aid = a["id"]
-                    with st.container(border=True):
+                    with st.container(border=True, key=f"pacard_{aid}"):
                         h1, h2 = st.columns([6, 1], vertical_alignment="center")
                         h1.markdown(
                             f'<div class="pa-act-head"><span class="pa-act-cod">{_cod[aid]}</span>'
@@ -2807,10 +2860,7 @@ elif page == "Programación de aula":
                             # (= PIL · parte; solo de consulta: no va al Word).
                             _filas = []
                             for il in _sel:
-                                _otras = [
-                                    _cod[x["id"]] + ("" if x.get("SA") == sa_sel else f" (SA {x.get('SA')})")
-                                    for x, _e in _enl.get(il, []) if x["id"] != aid
-                                ]
+                                _otras = [_tag_act(x) for x, _e in _enl.get(il, []) if x["id"] != aid]
                                 if il in _pend:
                                     _parte = '<span class="pa-tag warn">Falta repartir</span>'
                                     _fac = "—"
@@ -2818,7 +2868,7 @@ elif page == "Programación de aula":
                                     _parte = _pct(_frac.get((aid, il), 0))
                                     _f = float(_il_info.get(il, {}).get("PIL") or 0) * _frac.get((aid, il), 0)
                                     _fac = f"{_f:.2f}".replace(".", ",")
-                                _comp = (f'<span class="pa-tag info">También en {", ".join(_otras)}</span>'
+                                _comp = ('<span class="pa-otras">También en ' + " ".join(_otras) + "</span>"
                                          if _otras else "")
                                 _filas.append(
                                     f'<tr><td class="cod">{_esc(il)}</td><td>{_comp}</td>'
@@ -2950,21 +3000,13 @@ elif page == "Programación de aula":
                              sub="Así quedarían las columnas de esta situación de aprendizaje en "
                                  "iDoceo o Additio: cada actividad con los criterios que evalúa "
                                  "y su factor (peso del IL × parte que se evalúa en ella).")
-                    _TONOS = [  # fondo, fondo de celdas, franja, texto
-                        ("#FCE8EC", "#FEF5F7", "#E9A3B1", "#8A2A3C"),
-                        ("#E3EEF9", "#F2F7FC", "#93B8DE", "#2A557F"),
-                        ("#E5F1E8", "#F3F8F4", "#9CC9A8", "#2E6640"),
-                        ("#FDEBDD", "#FEF6EF", "#EDB48A", "#8A4A1C"),
-                        ("#EEE7F7", "#F7F3FB", "#B9A3DB", "#553A80"),
-                        ("#FBF3D5", "#FDFAEC", "#E2C766", "#6E5A10"),
-                    ]
 
                     def _num(x):
                         return f"{x:.2f}".rstrip("0").rstrip(".").replace(".", ",")
 
                     _cols, _cols_ce, _tonos = [], [], []
-                    for i, a in enumerate(_acts_sa):
-                        bg, soft, franja, tinta = _TONOS[i % len(_TONOS)]
+                    for a in _acts_sa:
+                        bg, soft, franja, tinta = _tono[a["id"]]
                         _tonos.append(soft)
                         _fce = {}  # CE -> factor (None = falta repartir)
                         for e in a.get("ils", []):
