@@ -310,14 +310,62 @@ st.markdown(
     .pa-tag.ok { background: #e3f3e6; color: #1e6b34; border-color: #9fd0a9; }
     .pa-tag.info { background: var(--jcyl-cream); color: #5c524a; border-color: var(--jcyl-line); }
     .pa-il-desc { font-size: 0.88rem; color: #5c524a; margin: 0.1rem 0 0.5rem 0; }
-    /* Etiquetas de IL en los selectores de actividades: suaves y sin cortar. */
+    /* Vista en el cuaderno (iDoceo / Additio): columnas pastel por actividad. */
+    .cuad-wrap {
+        overflow-x: auto; background: #fff; border: 1px solid var(--jcyl-line);
+        border-radius: 16px; box-shadow: 0 6px 22px rgba(34,28,24,0.07);
+        margin: 0.4rem 0 1rem 0;
+    }
+    table.cuad { border-collapse: separate; border-spacing: 0; min-width: 100%; margin: 0; font-size: 0.85rem; }
+    .cuad th, .cuad td { border: none !important; }
+    .cuad .alum {
+        position: sticky; left: 0; z-index: 1; background: #fff; min-width: 9.5rem;
+        text-align: left; padding: 0 1rem; font-weight: 600; color: #5c524a;
+        box-shadow: inset -1px 0 0 var(--jcyl-line);
+    }
+    .cuad .alum.esq {
+        vertical-align: bottom; padding-bottom: 0.75rem; font-size: 0.75rem;
+        text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .cuad .act {
+        vertical-align: top; text-align: left; padding: 0; min-width: 11rem; max-width: 15rem;
+        background: var(--bg); box-shadow: inset -1px 0 0 rgba(255,255,255,0.9);
+    }
+    .cuad .cab { border-top: 5px solid var(--franja); padding: 0.7rem 0.85rem 0.55rem; }
+    .cuad .cod { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; color: var(--tinta); }
+    .cuad .tit { font-size: 0.95rem; font-weight: 700; line-height: 1.25; color: var(--jcyl-ink); margin: 0.15rem 0 0.2rem; }
+    .cuad .ie { font-size: 0.75rem; font-weight: 500; color: var(--tinta); }
+    .cuad .ces {
+        display: flex; flex-wrap: wrap; gap: 0.3rem; padding: 0.55rem 0.85rem 0.7rem;
+        border-top: 1px dashed rgba(34,28,24,0.14);
+    }
+    .cuad .ce {
+        background: rgba(255,255,255,0.8); border-radius: 7px; padding: 0.12rem 0.5rem;
+        font-size: 0.8rem; font-weight: 700; color: var(--jcyl-ink); white-space: nowrap;
+        font-variant-numeric: tabular-nums; box-shadow: 0 1px 2px rgba(34,28,24,0.06);
+    }
+    .cuad .ce .x { font-weight: 500; color: var(--tinta); margin: 0 0.25rem; }
+    .cuad .ce.warn { background: #fff1cc; color: #7a4d00; box-shadow: inset 0 0 0 1px #e3b04b; }
+    .cuad .vacio { font-size: 0.78rem; color: #5c524a; font-style: italic; }
+    .cuad tbody .alum { height: 2.3rem; font-weight: 500; font-size: 0.82rem; border-top: 1px solid #f1e8dc !important; }
+    .cuad td.cel {
+        background: var(--soft); border-top: 1px solid #fff !important;
+        box-shadow: inset -1px 0 0 #fff;
+    }
+    .cuad td.cel::after {
+        content: ""; display: block; width: 2.2rem; height: 0.42rem; margin: auto;
+        border-radius: 4px; background: rgba(34,28,24,0.07);
+    }
+    .cuad tbody tr:last-child .alum { border-bottom-left-radius: 16px; }
+    /* Etiquetas de IL en los selectores de actividades: neutras (el rojo
+       sobre rosa se lee como error) y sin cortar. */
     [class*="st-key-paact_ils_"] [data-tag],
     [class*="st-key-pa_new_ils_"] [data-tag] {
-        background: #f8e8eb !important; border: 1px solid #e8c3ca; max-width: 100% !important;
+        background: #ffffff !important; border: 1px solid #d6c3ab; max-width: 100% !important;
     }
     [class*="st-key-paact_ils_"] [data-tag] *,
     [class*="st-key-pa_new_ils_"] [data-tag] * {
-        color: #7d1222 !important; max-width: none !important;
+        color: var(--jcyl-ink) !important; max-width: none !important;
     }
     </style>
     <div class="topbar">
@@ -2893,6 +2941,68 @@ elif page == "Programación de aula":
                     )
                 else:
                     st.caption("Aún no hay actividades para esta situación de aprendizaje.")
+
+                # ── Vista del cuaderno (iDoceo / Additio): una columna por
+                # actividad con los CE que evalúa y su factor (Σ PIL · parte
+                # del IL de sus IL en esa actividad). Solo de consulta.
+                if _acts_sa:
+                    _seccion("Vista en el cuaderno",
+                             sub="Así quedarían las columnas de esta situación de aprendizaje en "
+                                 "iDoceo o Additio: cada actividad con los criterios que evalúa "
+                                 "y su factor (peso del IL × parte que se evalúa en ella).")
+                    _TONOS = [  # fondo, fondo de celdas, franja, texto
+                        ("#FCE8EC", "#FEF5F7", "#E9A3B1", "#8A2A3C"),
+                        ("#E3EEF9", "#F2F7FC", "#93B8DE", "#2A557F"),
+                        ("#E5F1E8", "#F3F8F4", "#9CC9A8", "#2E6640"),
+                        ("#FDEBDD", "#FEF6EF", "#EDB48A", "#8A4A1C"),
+                        ("#EEE7F7", "#F7F3FB", "#B9A3DB", "#553A80"),
+                        ("#FBF3D5", "#FDFAEC", "#E2C766", "#6E5A10"),
+                    ]
+
+                    def _num(x):
+                        return f"{x:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+
+                    _cols, _cols_ce, _tonos = [], [], []
+                    for i, a in enumerate(_acts_sa):
+                        bg, soft, franja, tinta = _TONOS[i % len(_TONOS)]
+                        _tonos.append(soft)
+                        _fce = {}  # CE -> factor (None = falta repartir)
+                        for e in a.get("ils", []):
+                            il = e["IL"]
+                            ce = _il_info.get(il, {}).get("CE") or il.rsplit(".", 1)[0]
+                            if il in _pend:
+                                _fce[ce] = None
+                            elif _fce.get(ce, 0) is not None:
+                                _fce[ce] = _fce.get(ce, 0) + (
+                                    float(_il_info.get(il, {}).get("PIL") or 0) * _frac.get((a["id"], il), 0))
+                        _ces = "".join(
+                            f'<span class="ce warn" title="Falta repartir el peso">CE {_esc(ce)}'
+                            f'<span class="x">×</span>?</span>' if f is None else
+                            f'<span class="ce">CE {_esc(ce)}<span class="x">×</span>{_num(f)}</span>'
+                            for ce, f in _fce.items()
+                        ) or '<span class="vacio">Sin criterios</span>'
+                        _var = f"--bg:{bg};--franja:{franja};--tinta:{tinta}"
+                        _cols.append(
+                            f'<th scope="col" class="act" style="{_var}">'
+                            f'<div class="cab"><div class="cod">{_cod[a["id"]]}</div>'
+                            f'<div class="tit">{_esc(a.get("titulo") or "Sin título")}</div>'
+                            f'<div class="ie">{_esc(a.get("IE") or "")}</div></div></th>'
+                        )
+                        # (fila aparte: los CE quedan alineados aunque los títulos ocupen distinto)
+                        _cols_ce.append(f'<td class="act" style="{_var}"><div class="ces">{_ces}</div></td>')
+                    _filas = "".join(
+                        f'<tr><th scope="row" class="alum">Alumno/a {n}</th>'
+                        + "".join(f'<td class="cel" style="--soft:{s}"></td>' for s in _tonos)
+                        + "</tr>"
+                        for n in (1, 2, 3)
+                    )
+                    st.markdown(
+                        '<div class="cuad-wrap"><table class="cuad"><thead><tr>'
+                        '<th scope="col" rowspan="2" class="alum esq">Alumnado</th>' + "".join(_cols)
+                        + "</tr><tr>" + "".join(_cols_ce)
+                        + f"</tr></thead><tbody>{_filas}</tbody></table></div>",
+                        unsafe_allow_html=True,
+                    )
 
 # PÁGINA: INFORMACIÓN A FAMILIAS
 elif page == "Información a familias":
