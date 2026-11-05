@@ -81,6 +81,8 @@ run_app.bat            # = .venv\Scripts\python.exe -m streamlit run app.py --se
 `descriptores(codigo, etapa, competencia, descripcion)`,
 `catalogos(tipo IE|CC|AE, valor, orden)`.
 
+- **Contenidos de Tecnología e Ingeniería I y II, Digitalización 4º, TIC II y Ámbito Práctico 4º**: la lista viene de las programaciones Excel del centro y sustituye a la del decreto (códigos `A.1.1`; en Tecnología e Ingeniería cambian también el número y los textos: I 21→14, II 18→61). Las demás materias siguen con su codificación.  
+- **Transversales**: mandan los enunciados y la numeración de `curriculo.db`, también frente a los Excel. En Bachillerato los Excel numeraban distinto (su CT 2 era oratoria, el 3 de la base): al migrar se convirtió 2 → 3.
 - **DIVER** = materias con `normativa = 'Orden EDU/1332/2023'` (ámbitos de 3º y
   4º). En la base figuran como `etapa='ESO'`: usan transversales y descriptores
   de ESO. **ESO** en la app = ESO sin esas materias.
@@ -196,7 +198,7 @@ Variables: datos generales (`materia`, `curso`, `grupo`, `docente`, `numero_alum
 ## 10. Pendientes / ideas
 
 - Hacer push de `curriculo.db` a GitHub (si no, la app usa la copia local).
-- Migrar las programaciones Excel antiguas con Claude.ai (prompt preparado en la sesión del 2026-10-26).
+- Migrar las programaciones Excel antiguas que queden (las 5 de `ejemplos/Ejemplos programaciones` ya están en `.sqlite`, 2026-11-05).
 - Familias: peso de las competencias clave a partir de los DO — aplazado por decisión del usuario (ahora es viable con `criterio_descriptores`).
 - Familias: quizá textos por defecto del centro para redondeo/promoción.
 
@@ -227,3 +229,4 @@ Formato: `AAAA-MM-DD — qué se hizo (commit si aplica)`.
 - 2026-10-27 — **Rediseño visual de Programación de aula** (jerarquía y accesibilidad). Actividades: cifras de la SA (actividades, IL, IL sin actividad, repartos pendientes) en lugar del aviso amarillo; secciones con título y contador (Actividades · Reparto de pesos · Indicadores de esta SA · Resumen de actividades); tarjeta con código A en insignia, instrumento en etiqueta, «Borrar» discreto con icono y tabla de IL (compartido con…, parte del IL, factor iDoceo) en vez de la línea gris; etiquetas de IL en tono suave; estados con texto. Datos generales en dos secciones; Descripción SA con la SA como título (fuera los campos deshabilitados, poco contraste); etiquetas de campos con tildes (`_ETIQ`). Barra del Word alineada. Probado con AppTest (crear, repartir 70/30, título, partes iguales, borrar, guardar) y capturas en Chrome headless.
 - 2026-10-27 — Actividades: etiquetas de IL del selector en neutro (el rojo sobre rosa parecía un error) y nueva sección **Vista en el cuaderno** (iDoceo/Additio) al final de la pestaña. Probado con AppTest y captura.
 - 2026-10-27 — Actividades: cada tarjeta, sus etiquetas «También en…» y sus casillas de reparto llevan el color de su columna del cuaderno. Probado con AppTest y captura.
+- 2026-11-05 — Migradas a `.sqlite` las 5 programaciones de `ejemplos/Ejemplos programaciones` (TIN I y II, Digitalización, Ámbito Práctico 4º, TIC II), junto a sus Excel. `curriculo.db`: contenidos de esas 5 materias sustituidos por los del Excel y corregido el CE 2.2 de Ámbito Práctico («posible»); transversales intactos. Actividades con el mismo título, SA e instrumento agrupadas en una con varios IL. Corregido `A.2.1` → `A.1.2` en el IL 1.2.1 de TIN I (no existía). Probado: fila a fila y pesos contra el Excel, coherencia sin avisos, ida y vuelta idéntica, AppTest en todas las páginas y SA, los dos Word y capturas en Chrome headless. Con el `curriculo.db` anterior dan avisos de contenidos: hace falta el push.
