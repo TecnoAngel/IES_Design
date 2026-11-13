@@ -181,42 +181,60 @@ st.markdown(
         border-left-color: var(--jcyl-red); box-shadow: 0 2px 8px rgba(166,24,46,0.10);
     }
     .st-key-menu [data-testid="stButton"] button[kind="primary"] p { color: var(--jcyl-red); }
-    /* Pestañas de cada página (Situaciones, Criterios, …). */
-    /* Cada pestaña es una "pastilla" separada; la activa, rellena en rojo. */
+    /* Pestañas de cada página (Situaciones, Criterios, …): selector
+       segmentado. Un carril gris muy suave y, sobre él, la pestaña activa como
+       una ficha blanca con el texto en carmín; las demás, solo texto. Si no
+       caben en una línea pasan a la siguiente dentro del mismo carril. */
     [data-testid="stTabs"] [role="tablist"] {
-        gap: 0.5rem;
+        display: flex;
         flex-wrap: wrap;
-        padding-bottom: 0.6rem;
-        border-bottom: 2px solid var(--jcyl-line);
-        margin-bottom: 0.9rem;
+        gap: 2px;
+        width: fit-content;
+        max-width: 100%;
+        padding: 4px;
+        margin-bottom: 1.1rem;
+        background: #f3efea;
+        border: none;
+        border-radius: 12px;
+        overflow: visible;
     }
     [data-testid="stTabs"] [role="tab"] {
         height: auto !important;
-        padding: 0.45rem 1rem !important;
-        background: var(--jcyl-cream);
-        border: 1px solid var(--jcyl-line) !important;
-        border-radius: 999px;
-        transition: background-color 0.12s ease, border-color 0.12s ease;
+        padding: 0.38rem 0.9rem !important;
+        background: transparent;
+        border: none !important;
+        border-radius: 9px;
+        cursor: pointer;
+        transition: background-color 0.18s ease, box-shadow 0.18s ease;
     }
     [data-testid="stTabs"] [role="tab"] p {
-        font-size: 0.95rem;
-        font-weight: 600;
-        color: var(--jcyl-ink);
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #6a5f57;
         white-space: nowrap;
+        transition: color 0.18s ease;
     }
-    [data-testid="stTabs"] [role="tab"]:hover {
-        background: #f3e6d3;
-        border-color: var(--jcyl-gold) !important;
-    }
+    [data-testid="stTabs"] [role="tab"]:hover { background: rgba(255,255,255,0.65); }
+    [data-testid="stTabs"] [role="tab"]:hover p { color: var(--jcyl-ink); }
     [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
-        background: var(--jcyl-red);
-        border-color: var(--jcyl-red) !important;
-        box-shadow: 0 2px 8px rgba(166,24,46,0.25);
+        background: #ffffff;
+        box-shadow: 0 1px 2px rgba(40,25,15,0.10), 0 2px 6px rgba(40,25,15,0.07);
     }
-    [data-testid="stTabs"] [role="tab"][aria-selected="true"] p { color: #ffffff; }
-    /* Sin la línea deslizante ni el borde por defecto de BaseWeb. */
+    [data-testid="stTabs"] [role="tab"][aria-selected="true"] p {
+        color: var(--jcyl-red);
+        font-weight: 600;
+    }
+    [data-testid="stTabs"] [role="tab"]:focus-visible {
+        outline: 2px solid var(--jcyl-red);
+        outline-offset: 1px;
+    }
+    /* Fuera la raya del seleccionado y la línea del carril de Streamlit
+       (en 1.63 son .react-aria-SelectionIndicator y el ::after del tablist). */
+    [data-testid="stTabs"] .react-aria-SelectionIndicator,
     [data-testid="stTabs"] [data-baseweb="tab-highlight"],
-    [data-testid="stTabs"] [data-baseweb="tab-border"] { display: none; }
+    [data-testid="stTabs"] [data-baseweb="tab-border"] { display: none !important; }
+    [data-testid="stTabs"] [role="tablist"]::after,
+    [data-testid="stTabs"] [role="tablist"]::before { display: none !important; }
     .mini-label {
         font-size: 0.8rem;
         font-weight: 600;
