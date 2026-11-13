@@ -272,36 +272,6 @@ st.markdown(
         border-radius: 999px; padding: 0 0.55rem;
     }
     .pa-sec-sub { font-size: 0.9rem; color: #5c524a; margin: 0.35rem 0 0.75rem 0; }
-    .pa-stats { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0.3rem 0 0.2rem 0; }
-    .pa-stat {
-        flex: 1 1 150px; background: #fff; border: 1px solid var(--jcyl-line);
-        border-radius: 10px; padding: 0.45rem 0.85rem;
-    }
-    .pa-stat .k { font-size: 0.78rem; font-weight: 600; color: #5c524a; }
-    .pa-stat .v { font-size: 1.4rem; font-weight: 700; color: var(--jcyl-ink); line-height: 1.25; }
-    .pa-stat.warn { background: #fff8e6; border-color: #e3b04b; }
-    .pa-stat.warn .v { color: #7a4d00; }
-    .pa-act-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
-    .pa-act-cod {
-        font-weight: 700; font-size: 0.95rem; color: #fff; background: var(--jcyl-red);
-        border-radius: 6px; padding: 0.1rem 0.5rem; min-width: 2.4rem; text-align: center;
-    }
-    .pa-act-ie {
-        font-size: 0.82rem; font-weight: 600; color: #5c524a; background: var(--jcyl-cream);
-        border: 1px solid var(--jcyl-line); border-radius: 999px; padding: 0.1rem 0.65rem;
-    }
-    table.pa-ils { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin: 0.1rem 0 0.2rem 0; }
-    .pa-ils th {
-        text-align: left; font-size: 0.75rem; font-weight: 600; color: #5c524a;
-        border-bottom: 1px solid var(--jcyl-line); padding: 0.2rem 0.5rem;
-    }
-    .pa-ils th, .pa-ils td { border-left: none !important; border-right: none !important; border-top: none !important; }
-    .pa-ils td { padding: 0.3rem 0.5rem; border-bottom: 1px solid #f1e8dc; vertical-align: top; }
-    .pa-ils .cod { width: 14%; }
-    .pa-ils .num { width: 18%; }
-    .pa-ils tr:last-child td { border-bottom: none; }
-    .pa-ils .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-    .pa-ils .cod { font-weight: 700; white-space: nowrap; }
     .pa-tag {
         display: inline-block; font-size: 0.75rem; font-weight: 600; white-space: nowrap;
         border-radius: 999px; padding: 0.05rem 0.55rem; border: 1px solid;
@@ -309,28 +279,6 @@ st.markdown(
     .pa-tag.warn { background: #fff1cc; color: #7a4d00; border-color: #e3b04b; }
     .pa-tag.ok { background: #e3f3e6; color: #1e6b34; border-color: #9fd0a9; }
     .pa-tag.info { background: var(--jcyl-cream); color: #5c524a; border-color: var(--jcyl-line); }
-    .pa-il-desc { font-size: 0.88rem; color: #5c524a; margin: 0.1rem 0 0.5rem 0; }
-    /* Tarjeta de actividad con el tono de su columna del cuaderno (las
-       variables --soft/--franja/--tinta se fijan por tarjeta en app.py). */
-    [class*="st-key-pacard_"] {
-        background: var(--soft) !important;
-        border-color: var(--franja) !important;
-        border-top: 6px solid var(--franja) !important;
-    }
-    [class*="st-key-pacard_"] .pa-act-cod { background: var(--tinta); }
-    [class*="st-key-pacard_"] .pa-act-ie { background: #fff; border-color: var(--franja); color: var(--tinta); }
-    /* Campos en blanco sobre el pastel, para que se lean como editables. */
-    [class*="st-key-pacard_"] [data-baseweb="input"],
-    [class*="st-key-pacard_"] [data-baseweb="input"] > div,
-    [class*="st-key-pacard_"] input,
-    [class*="st-key-pacard_"] [data-testid="stMultiSelect"] [role="group"] {
-        background: #fff !important;
-    }
-    [class*="st-key-pacard_"] [data-testid="stMultiSelect"] [data-tag] { background: var(--soft) !important; }
-    [class*="st-key-pacard_"] .pa-ils th { border-bottom-color: var(--franja) !important; }
-    [class*="st-key-pacard_"] .pa-ils td { border-bottom-color: rgba(34,28,24,0.08) !important; }
-    .pa-otras { font-size: 0.78rem; color: #5c524a; white-space: nowrap; }
-    .pa-otras .pa-tag { margin-left: 0.2rem; }
     /* Vista en el cuaderno (iDoceo / Additio): columnas pastel por actividad. */
     .cuad-wrap {
         overflow-x: auto; background: #fff; border: 1px solid var(--jcyl-line);
@@ -380,12 +328,10 @@ st.markdown(
     .cuad tbody tr:last-child .alum { border-bottom-left-radius: 16px; }
     /* Etiquetas de IL en los selectores de actividades: neutras (el rojo
        sobre rosa se lee como error) y sin cortar. */
-    [class*="st-key-paact_ils_"] [data-tag],
-    [class*="st-key-pa_new_ils_"] [data-tag] {
+    [class*="st-key-paact_ils_"] [data-tag] {
         background: #ffffff !important; border: 1px solid #d6c3ab; max-width: 100% !important;
     }
-    [class*="st-key-paact_ils_"] [data-tag] *,
-    [class*="st-key-pa_new_ils_"] [data-tag] * {
+    [class*="st-key-paact_ils_"] [data-tag] * {
         color: var(--jcyl-ink) !important; max-width: none !important;
     }
     </style>
@@ -535,7 +481,7 @@ def _cargar_estado(estado: dict, nombre: str) -> None:
     for _k in (
         "prog_out", "sa_grid_rows", "ce_rows", "il_pending", "pa_docx",
         "consist_seen", "fam_docx", "prog_msg", "ipf_obj_df", "il_filtro_sa",
-        "pa_il_dialog", "pa_sa_actual",
+        "pa_sa_actual",
     ):
         ss.pop(_k, None)
     # ...los widgets con estado propio (familias, campos de aula, datos
@@ -1353,91 +1299,6 @@ def _abrir_dialogo_elementos(campo, titulo, row_idx, pending, items, *, cod_key=
         # relanza el propio diálogo (como un fragment); hace falta un st.rerun()
         # explícito (con scope="app") para que se cierre de verdad, igual que
         # ya hace _dlg_coherencia.
-        if st.button("Cerrar", type="primary", use_container_width=True):
-            _cerrar()
-            st.rerun(scope="app")
-
-    _panel()
-
-
-def _describir_codigos(valor, items, cod_key="cod", desc_key="desc"):
-    """['1.1', '1.3'] -> [('1.1', 'desc...'), ('1.3', 'desc...')], en el orden
-    en que aparecen en `valor` (cadena separada por comas)."""
-    tokens = [t.strip().replace(" ", "") for t in str(valor or "").split(",") if t.strip()]
-    lookup = {str(it.get(cod_key, "")).replace(" ", ""): it.get(desc_key, "") for it in items}
-    return [(t, lookup.get(t, "")) for t in tokens]
-
-
-def _chip_html(cod, desc):
-    from html import escape as _esc
-
-    cola = f" — {_esc(desc)}" if desc else ""
-    return f'<span class="il-chip"><b>{_esc(str(cod))}</b>{cola}</span>'
-
-
-def _info_card_html(label, value):
-    from html import escape as _esc
-
-    return (
-        f'<div class="il-info-card"><div class="lbl">{_esc(label)}</div>'
-        f'<div class="val">{_esc(str(value)) if value else "—"}</div></div>'
-    )
-
-
-def _resumen_il_dialog(il, il_info, elementos):
-    """Panel flotante de solo lectura: resumen explícito de qué trabaja un
-    indicador (contenidos y transversales descritos, instrumento de
-    evaluación, agente evaluador, CC)."""
-    from html import escape as _esc
-
-    ss = st.session_state
-    info = il_info.get(il, {})
-    con_desc = _describir_codigos(info.get("CON"), elementos.get("contenidos", []), "cod")
-    ct_desc = _describir_codigos(info.get("CT"), elementos.get("transversales", []), "num")
-
-    def _cerrar():
-        ss.pa_il_dialog = None
-
-    @st.dialog(f"Resumen del indicador {il or '—'}", width="large", on_dismiss=_cerrar)
-    def _panel():
-        st.markdown(
-            f'<div class="mini-label">Criterio de evaluación</div>'
-            f'<div style="font-size:1.08rem;font-weight:700;color:var(--jcyl-ink)">'
-            f'CE {_esc(info.get("CE") or "—")}</div>'
-            f'<div style="opacity:.85;margin-bottom:.5rem">{_esc(info.get("CED") or "")}</div>',
-            unsafe_allow_html=True,
-        )
-        if info.get("DIL"):
-            st.markdown(f'<div class="il-dil-box">{_esc(info["DIL"])}</div>', unsafe_allow_html=True)
-
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown('<div class="mini-label">Contenidos (CON)</div>', unsafe_allow_html=True)
-            if con_desc:
-                st.markdown("".join(_chip_html(cod, desc) for cod, desc in con_desc), unsafe_allow_html=True)
-            else:
-                st.caption("Sin contenidos asignados.")
-        with c2:
-            st.markdown('<div class="mini-label">Transversales (CT)</div>', unsafe_allow_html=True)
-            if ct_desc:
-                st.markdown("".join(_chip_html(cod, desc) for cod, desc in ct_desc), unsafe_allow_html=True)
-            else:
-                st.caption("Sin transversales asignados.")
-
-        st.markdown('<div style="height:.9rem"></div>', unsafe_allow_html=True)
-        st.markdown('<div class="mini-label">Evaluación</div>', unsafe_allow_html=True)
-        st.markdown(
-            _info_card_html("Instrumento de evaluación", info.get("IE"))
-            + _info_card_html("Agente evaluador", info.get("AE"))
-            + _info_card_html("CC", info.get("CC")),
-            unsafe_allow_html=True,
-        )
-
-        st.markdown('<div style="height:.9rem"></div>', unsafe_allow_html=True)
-        # Botón imperativo (no on_click) + st.rerun(scope="app"): dentro de un
-        # st.dialog un widget interno solo relanza el propio diálogo (es un
-        # fragment); hace falta forzar el rerun completo para que cierre de
-        # verdad, igual que _dlg_coherencia.
         if st.button("Cerrar", type="primary", use_container_width=True):
             _cerrar()
             st.rerun(scope="app")
@@ -2518,20 +2379,6 @@ elif page == "Programación de aula":
     if not _hay_proyecto():
         st.info("Abre un proyecto o crea uno nuevo en la barra de arriba para empezar.")
     else:
-        from tools.programacion_aula_editor import (
-            codigos,
-            enlaces_por_il,
-            fraccion_por_enlace,
-            nuevo_id,
-            repartir_iguales,
-            reparto_pendiente,
-            valores_actividades,
-        )
-        from tools.situaciones_informe import (
-            build_html_table_copy_html,
-            render_word_table_html,
-        )
-
         ss = st.session_state
 
         # Indicadores de logro ya recalculados (IL/SA/PIL rellenos). Se toma el
@@ -2691,360 +2538,15 @@ elif page == "Programación de aula":
                     )
                 ss.pa_sa_edits[_dsa_sel] = _cur
 
-        # ── PESTAÑA: Actividades por situación de aprendizaje
-        # Una actividad = SA + instrumento de evaluación + título + los IL de
-        # esa SA con ese instrumento que evalúa. Si un IL está en varias
-        # actividades, se pide repartir su peso (PA, en %) entre ellas.
+        # ── PESTAÑA: Actividades por situación de aprendizaje. Todo lo que se
+        # ve (los tres cuadros) está en ui_actividades.py.
         with _tab_pact:
             if _tab_pact.open:
-                sa_sel = _sel_sa("pa_sa_sel")
-                _ils_sa_rows = [r for r in _il_state if r["SA"] == sa_sel]
-                _ies_sa = list(dict.fromkeys(r["IE"] for r in _ils_sa_rows if r.get("IE")))
-                _il_info = {r["IL"]: r for r in _il_state}
-                _acts_sa = [a for a in ss.pa_acts if a.get("SA") == sa_sel]
-                _cod = codigos(ss.pa_acts)
-                _frac = fraccion_por_enlace(ss.pa_acts)
-                _enl = enlaces_por_il(ss.pa_acts)
-                _pend = set(reparto_pendiente(ss.pa_acts))
+                import ui_actividades
 
-                def _il_lbl(il):
-                    d = str(_il_info.get(il, {}).get("DIL") or "")
-                    return f"{il} — {d[:80] + '…' if len(d) > 80 else d}" if d else il
-
-                def _ils_de(ie):
-                    return [r["IL"] for r in _ils_sa_rows if r.get("IE") == ie]
-
-                def _set_acts(nuevas):
-                    ss.pa_acts = nuevas
-                    ss.pop("prog_out", None)
-                    ss.pop("pa_docx", None)
-
-                def _sin_widgets(pref):
-                    for k in [k for k in ss.keys() if str(k).startswith(pref)]:
-                        ss.pop(k, None)
-
-                from html import escape as _esc
-
-                # ── Resumen de la SA: cuatro cifras de un vistazo
-                _sin_act = [r["IL"] for r in _ils_sa_rows if r["IL"] not in _enl]
-                _pend_sa = [r["IL"] for r in _ils_sa_rows if r["IL"] in _pend]
-
-                def _stat(k, v, aviso=False):
-                    return (f'<div class="pa-stat{" warn" if aviso else ""}">'
-                            f'<div class="k">{k}</div><div class="v">{v}</div></div>')
-
-                st.markdown(
-                    '<div class="pa-stats">'
-                    + _stat("Actividades", len(_acts_sa))
-                    + _stat("Indicadores de la SA", len(_ils_sa_rows))
-                    + _stat("Indicadores sin actividad", len(_sin_act), aviso=bool(_sin_act))
-                    + _stat("Repartos de peso pendientes", len(_pend_sa), aviso=bool(_pend_sa))
-                    + "</div>",
-                    unsafe_allow_html=True,
-                )
-
-                _seccion("Actividades", n=len(_acts_sa),
-                         sub="Cada actividad evalúa, con un instrumento, uno o varios "
-                             "indicadores de esta situación de aprendizaje.")
-
-                # ── Nueva actividad
-                with st.expander("Nueva actividad", expanded=not _acts_sa, icon=":material/add:"):
-                    if not _ils_sa_rows:
-                        st.info("Esta situación de aprendizaje aún no tiene indicadores de logro "
-                                "(se asignan en «Diseño de la programación» › Indicadores de logro).")
-                    elif not _ies_sa:
-                        st.info("Los indicadores de esta situación de aprendizaje no tienen "
-                                "instrumento de evaluación: asígnaselo en «Indicadores de logro».")
-                    else:
-                        nc1, nc2 = st.columns([1, 2])
-                        _n_ie = nc1.selectbox("Instrumento de evaluación", _ies_sa,
-                                              key=f"pa_new_ie_{sa_sel}")
-                        _n_tit = nc2.text_input("Título", key=f"pa_new_tit_{sa_sel}")
-                        _n_ils = st.multiselect(
-                            "Indicadores de logro que evalúa (los de esta SA con ese instrumento)",
-                            _ils_de(_n_ie), format_func=_il_lbl,
-                            key=f"pa_new_ils_{sa_sel}_{_n_ie}",
-                        )
-                        if st.button("Crear actividad", type="primary", key=f"pa_new_btn_{sa_sel}",
-                                     disabled=not (_n_tit.strip() and _n_ils)):
-                            _set_acts(ss.pa_acts + [{
-                                "id": nuevo_id(ss.pa_acts), "SA": sa_sel, "IE": _n_ie,
-                                "titulo": _n_tit.strip(),
-                                "ils": [{"IL": il, "PA": None} for il in _n_ils],
-                            }])
-                            _sin_widgets(f"pa_new_tit_{sa_sel}")
-                            _sin_widgets(f"pa_new_ils_{sa_sel}_")
-                            # los IL que ya estaban en otra actividad: a repartir de nuevo
-                            _sin_widgets("paact_pa_")
-                            st.rerun()
-
-                # ── Actividades de la SA
-                def _act_sync(aid):
-                    tit = ss.get(f"paact_tit_{aid}", "")
-                    sel = ss.get(f"paact_ils_{aid}", [])
-                    nuevas = []
-                    for a in ss.pa_acts:
-                        if a["id"] == aid:
-                            pa = {e["IL"]: e.get("PA") for e in a.get("ils", [])}
-                            a = dict(a, titulo=str(tit).strip(),
-                                     ils=[{"IL": il, "PA": pa.get(il)} for il in sel])
-                        nuevas.append(a)
-                    _set_acts(nuevas)
-                    _sin_widgets("paact_pa_")
-
-                def _pct(x):
-                    return f"{x * 100:.0f} %"
-
-                # Un tono pastel por actividad, el mismo en su tarjeta, en las
-                # etiquetas «También en…» y en su columna de la vista del cuaderno.
-                _TONOS = [  # fondo, fondo suave, franja, texto (≥ 4,5:1 sobre blanco)
-                    ("#FCE8EC", "#FEF5F7", "#E9A3B1", "#8A2A3C"),
-                    ("#E3EEF9", "#F2F7FC", "#93B8DE", "#2A557F"),
-                    ("#E5F1E8", "#F3F8F4", "#9CC9A8", "#2E6640"),
-                    ("#FDEBDD", "#FEF6EF", "#EDB48A", "#8A4A1C"),
-                    ("#EEE7F7", "#F7F3FB", "#B9A3DB", "#553A80"),
-                    ("#FBF3D5", "#FDFAEC", "#E2C766", "#6E5A10"),
-                ]
-                _tono = {a["id"]: _TONOS[i % len(_TONOS)] for i, a in enumerate(_acts_sa)}
-                st.markdown(
-                    "<style>" + "".join(
-                        f".st-key-pacard_{aid} {{ --bg:{bg}; --soft:{soft}; --franja:{fr}; --tinta:{ti}; }}"
-                        # casillas de «Reparto de pesos» de esta actividad
-                        f'[class*="st-key-paact_pa_{aid}_"] [data-testid="stNumberInputContainer"] {{'
-                        f" background:{bg} !important; border-left:6px solid {fr} !important; }}"
-                        f'[class*="st-key-paact_pa_{aid}_"] [data-testid="stNumberInputContainer"] * {{'
-                        " background:transparent !important; }"
-                        for aid, (bg, soft, fr, ti) in _tono.items()
-                    ) + "</style>",
-                    unsafe_allow_html=True,
-                )
-
-                def _tag_act(x):
-                    """Código de otra actividad en su color (de otra SA: neutro)."""
-                    if x.get("SA") != sa_sel:
-                        return f'<span class="pa-tag info">{_cod[x["id"]]} (SA {x.get("SA")})</span>'
-                    bg, _s, fr, ti = _tono[x["id"]]
-                    return (f'<span class="pa-tag" style="background:{bg};border-color:{fr};color:{ti}">'
-                            f'{_cod[x["id"]]}</span>')
-
-                for a in _acts_sa:
-                    aid = a["id"]
-                    with st.container(border=True, key=f"pacard_{aid}"):
-                        h1, h2 = st.columns([6, 1], vertical_alignment="center")
-                        h1.markdown(
-                            f'<div class="pa-act-head"><span class="pa-act-cod">{_cod[aid]}</span>'
-                            f'<span class="pa-act-ie">{_esc(a.get("IE") or "Sin instrumento")}</span></div>',
-                            unsafe_allow_html=True,
-                        )
-                        if h2.button("Borrar", key=f"paact_del_{aid}", type="tertiary",
-                                     icon=":material/delete:", help=f"Borrar la actividad {_cod[aid]}"):
-                            _set_acts([x for x in ss.pa_acts if x["id"] != aid])
-                            _sin_widgets(f"paact_tit_{aid}")
-                            _sin_widgets(f"paact_ils_{aid}")
-                            _sin_widgets("paact_pa_")
-                            st.rerun()
-                        _ka, _ki = f"paact_tit_{aid}", f"paact_ils_{aid}"
-                        _sel = [e["IL"] for e in a.get("ils", [])]
-                        if _ka not in ss:
-                            ss[_ka] = a.get("titulo", "")
-                        if _ki not in ss:
-                            ss[_ki] = _sel
-                        st.text_input("Título de la actividad", key=_ka, on_change=_act_sync, args=(aid,))
-                        # (+ los que ya tenga aunque ya no casen: la coherencia avisa)
-                        _opts = _ils_de(a.get("IE"))
-                        _opts = _opts + [il for il in _sel if il not in _opts]
-                        st.multiselect("Indicadores de logro que evalúa", _opts, format_func=_il_lbl,
-                                       key=_ki, on_change=_act_sync, args=(aid,))
-                        if _sel:
-                            # Parte de cada IL que se evalúa aquí y factor iDoceo
-                            # (= PIL · parte; solo de consulta: no va al Word).
-                            _filas = []
-                            for il in _sel:
-                                _otras = [_tag_act(x) for x, _e in _enl.get(il, []) if x["id"] != aid]
-                                if il in _pend:
-                                    _parte = '<span class="pa-tag warn">Falta repartir</span>'
-                                    _fac = "—"
-                                else:
-                                    _parte = _pct(_frac.get((aid, il), 0))
-                                    _f = float(_il_info.get(il, {}).get("PIL") or 0) * _frac.get((aid, il), 0)
-                                    _fac = f"{_f:.2f}".replace(".", ",")
-                                _comp = ('<span class="pa-otras">También en ' + " ".join(_otras) + "</span>"
-                                         if _otras else "")
-                                _filas.append(
-                                    f'<tr><td class="cod">{_esc(il)}</td><td>{_comp}</td>'
-                                    f'<td class="num">{_parte}</td><td class="num">{_fac}</td></tr>'
-                                )
-                            st.markdown(
-                                '<table class="pa-ils"><thead><tr><th scope="col">Indicador</th>'
-                                '<th scope="col">Compartido</th><th scope="col" class="num">Parte del IL</th>'
-                                '<th scope="col" class="num">Factor iDoceo</th></tr></thead><tbody>'
-                                + "".join(_filas) + "</tbody></table>",
-                                unsafe_allow_html=True,
-                            )
-                        else:
-                            st.markdown('<span class="pa-tag warn">Sin indicadores: esta actividad '
-                                        "no cuenta en la nota</span>", unsafe_allow_html=True)
-
-                # ── Reparto de pesos de los IL evaluados en varias actividades
-                _compartidos = [
-                    r["IL"] for r in _ils_sa_rows if len(_enl.get(r["IL"], [])) > 1
-                ]
-                if _compartidos:
-                    _seccion("Reparto de pesos", n=len(_compartidos),
-                             sub="Indicadores que se evalúan en varias actividades: indica qué "
-                                 "parte (%) se evalúa en cada una. Tiene que sumar 100 %.")
-
-                    def _pa_sync(il):
-                        vals = {
-                            a["id"]: ss.get(f"paact_pa_{a['id']}_{il}")
-                            for a, _e in _enl.get(il, [])
-                        }
-                        nuevas = []
-                        for a in ss.pa_acts:
-                            if a["id"] in vals:
-                                a = dict(a, ils=[
-                                    dict(e, PA=vals[a["id"]]) if e["IL"] == il else e
-                                    for e in a.get("ils", [])
-                                ])
-                            nuevas.append(a)
-                        _set_acts(nuevas)
-
-                    for il in _compartidos:
-                        with st.container(border=True):
-                            st.markdown(
-                                f'<div class="pa-act-head"><b>Indicador {_esc(il)}</b></div>'
-                                f'<div class="pa-il-desc">{_esc(str(_il_info.get(il, {}).get("DIL") or ""))}</div>',
-                                unsafe_allow_html=True,
-                            )
-                            _links = _enl[il]
-                            _rc = st.columns(len(_links) + 1, vertical_alignment="bottom")
-                            for (a, e), col in zip(_links, _rc):
-                                _k = f"paact_pa_{a['id']}_{il}"
-                                if _k not in ss:
-                                    ss[_k] = None if e.get("PA") is None else float(e["PA"])
-                                _sa_txt = "" if a.get("SA") == sa_sel else f" (SA {a.get('SA')})"
-                                col.number_input(
-                                    f"{_cod[a['id']]}{_sa_txt} · {a.get('titulo') or 'sin título'} (%)",
-                                    min_value=0.0, max_value=100.0, step=5.0, format="%.1f",
-                                    key=_k, on_change=_pa_sync, args=(il,),
-                                )
-                            _suma = sum(float(e.get("PA") or 0) for _a, e in _links)
-                            with _rc[-1]:
-                                _txt = f"{_suma:.1f}".replace(".", ",")
-                                if il in _pend:
-                                    st.markdown(f'<span class="pa-tag warn">Suma {_txt} % · falta repartir</span>',
-                                                unsafe_allow_html=True)
-                                    if st.button("Repartir a partes iguales", key=f"paact_eq_{il}",
-                                                 use_container_width=True):
-                                        _set_acts(repartir_iguales(ss.pa_acts, [il]))
-                                        _sin_widgets("paact_pa_")
-                                        st.rerun()
-                                else:
-                                    st.markdown(f'<span class="pa-tag ok">✓ Suma {_txt} %</span>',
-                                                unsafe_allow_html=True)
-
-                # ── Indicadores de la SA sin actividad y resumen de un indicador
-                if _ils_sa_rows:
-                    _seccion("Indicadores de esta situación de aprendizaje")
-                    if _sin_act:
-                        st.markdown(
-                            '<div class="pa-sec-sub">Aún sin ninguna actividad: '
-                            + " ".join(f'<span class="pa-tag warn">{_esc(il)}</span>' for il in _sin_act)
-                            + "</div>",
-                            unsafe_allow_html=True,
-                        )
-                    else:
-                        st.markdown('<div class="pa-sec-sub"><span class="pa-tag ok">✓ Todos se evalúan '
-                                    "en alguna actividad</span></div>", unsafe_allow_html=True)
-                    rc1, rc2 = st.columns([3, 1], vertical_alignment="bottom")
-                    _il_ver = rc1.selectbox("Consultar un indicador", [r["IL"] for r in _ils_sa_rows],
-                                            format_func=_il_lbl, key=f"pa_ver_il_{sa_sel}")
-                    if rc2.button("Ver resumen", use_container_width=True, key=f"pa_ver_btn_{sa_sel}",
-                                  icon=":material/visibility:"):
-                        ss.pa_il_dialog = _il_ver
-                if ss.get("pa_il_dialog"):
-                    _resumen_il_dialog(ss.pa_il_dialog, _il_info, ss.get("elementos", {}))
-
-                # ── Resumen de actividades de esta SA (dinámica de INFORMES)
-                _seccion("Resumen de actividades",
-                         sub="Valor de cada actividad sobre la programación y sobre la "
-                             "situación de aprendizaje.")
-                _val = valores_actividades(ss.pa_acts, _il_state, _ce_p)
-                _val_sa = [a for a in _val if a.get("SA") == sa_sel]
-                _rheaders = ["A", "Actividad", "Instrumento", "IL", "Valor s/ programación", "Valor s/ SA"]
-                _rrows = [
-                    [
-                        a["A"], a["titulo"], a["IE"], a["ILs"],
-                        f"{a['valor_prog'] * 100:.2f}".replace(".", ",") + " %",
-                        f"{a['valor_sa'] * 100:.2f}".replace(".", ",") + " %",
-                    ]
-                    for a in _val_sa
-                ]
-                if _rrows:
-                    st.markdown(_tabla_html(_rheaders, _rrows), unsafe_allow_html=True)
-                    components.html(
-                        build_html_table_copy_html(
-                            render_word_table_html(_rheaders, _rrows),
-                            btn_id="pa-res-copy", fn="paResCopy", label="Copiar tabla (Word)",
-                        ),
-                        height=40,
-                    )
-                else:
-                    st.caption("Aún no hay actividades para esta situación de aprendizaje.")
-
-                # ── Vista del cuaderno (iDoceo / Additio): una columna por
-                # actividad con los CE que evalúa y su factor (Σ PIL · parte
-                # del IL de sus IL en esa actividad). Solo de consulta.
-                if _acts_sa:
-                    _seccion("Vista en el cuaderno",
-                             sub="Así quedarían las columnas de esta situación de aprendizaje en "
-                                 "iDoceo o Additio: cada actividad con los criterios que evalúa "
-                                 "y su factor (peso del IL × parte que se evalúa en ella).")
-
-                    def _num(x):
-                        return f"{x:.2f}".rstrip("0").rstrip(".").replace(".", ",")
-
-                    _cols, _cols_ce, _tonos = [], [], []
-                    for a in _acts_sa:
-                        bg, soft, franja, tinta = _tono[a["id"]]
-                        _tonos.append(soft)
-                        _fce = {}  # CE -> factor (None = falta repartir)
-                        for e in a.get("ils", []):
-                            il = e["IL"]
-                            ce = _il_info.get(il, {}).get("CE") or il.rsplit(".", 1)[0]
-                            if il in _pend:
-                                _fce[ce] = None
-                            elif _fce.get(ce, 0) is not None:
-                                _fce[ce] = _fce.get(ce, 0) + (
-                                    float(_il_info.get(il, {}).get("PIL") or 0) * _frac.get((a["id"], il), 0))
-                        _ces = "".join(
-                            f'<span class="ce warn" title="Falta repartir el peso">CE {_esc(ce)}'
-                            f'<span class="x">×</span>?</span>' if f is None else
-                            f'<span class="ce">CE {_esc(ce)}<span class="x">×</span>{_num(f)}</span>'
-                            for ce, f in _fce.items()
-                        ) or '<span class="vacio">Sin criterios</span>'
-                        _var = f"--bg:{bg};--franja:{franja};--tinta:{tinta}"
-                        _cols.append(
-                            f'<th scope="col" class="act" style="{_var}">'
-                            f'<div class="cab"><div class="cod">{_cod[a["id"]]}</div>'
-                            f'<div class="tit">{_esc(a.get("titulo") or "Sin título")}</div>'
-                            f'<div class="ie">{_esc(a.get("IE") or "")}</div></div></th>'
-                        )
-                        # (fila aparte: los CE quedan alineados aunque los títulos ocupen distinto)
-                        _cols_ce.append(f'<td class="act" style="{_var}"><div class="ces">{_ces}</div></td>')
-                    _filas = "".join(
-                        f'<tr><th scope="row" class="alum">Alumno/a {n}</th>'
-                        + "".join(f'<td class="cel" style="--soft:{s}"></td>' for s in _tonos)
-                        + "</tr>"
-                        for n in (1, 2, 3)
-                    )
-                    st.markdown(
-                        '<div class="cuad-wrap"><table class="cuad"><thead><tr>'
-                        '<th scope="col" rowspan="2" class="alum esq">Alumnado</th>' + "".join(_cols)
-                        + "</tr><tr>" + "".join(_cols_ce)
-                        + f"</tr></thead><tbody>{_filas}</tbody></table></div>",
-                        unsafe_allow_html=True,
-                    )
+                with st.columns([1, 2])[0]:
+                    sa_sel = _sel_sa("pa_sa_sel")
+                ui_actividades.pintar(sa_sel, _il_state, _ce_p)
 
 # PÁGINA: INFORMACIÓN A FAMILIAS
 elif page == "Información a familias":

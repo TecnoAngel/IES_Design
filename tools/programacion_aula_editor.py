@@ -7,20 +7,18 @@ indicadores de logro de esa SA con ese instrumento::
     {"id": 3, "SA": 2, "IE": "Rúbrica", "titulo": "...",
      "ils": [{"IL": "2.1.1", "PA": None}, {"IL": "2.3.1", "PA": 50.0}]}
 
-``PA`` es la parte (en %) del indicador que se evalúa en esa actividad. Si el
-indicador solo está en una actividad, cuenta el 100 % y ``PA`` da igual; si
-está en varias, el docente reparte su peso entre ellas (``PA`` vacío = sin
-repartir: se completa a partes iguales con lo que falte hasta 100). Los
-valores sobre la programación y sobre la SA replican la tabla dinámica que
+``PA`` es el **peso** de esa actividad dentro del indicador. Si el indicador
+solo está en una actividad, cuenta el 100 % y ``PA`` da igual; si está en
+varias, el docente pone un peso a cada una y la parte de cada actividad es
+``PA / ΣPA`` (quien prefiera trabajar en % pone pesos que sumen 100). ``PA``
+vacío = sin peso todavía: mientras tanto cuenta como la media de los demás.
+Los valores sobre la programación y sobre la SA replican la tabla dinámica que
 tenía el antiguo Excel de programación (hoja INFORMES).
 """
 
 from __future__ import annotations
 
 from typing import Any
-
-TOLERANCIA = 0.05  # puntos de % para dar por bueno un reparto que suma 100
-
 
 def _s(v: Any) -> str:
     return "" if v is None else str(v).strip()
@@ -53,16 +51,13 @@ def enlaces_por_il(acts: list[dict]) -> dict[str, list[tuple[dict, dict]]]:
 
 def fraccion_por_enlace(acts: list[dict]) -> dict[tuple[int, str], float]:
     """``{(id de actividad, IL): fracción del IL que se evalúa en ella}``
-    (las de cada IL suman 1)."""
+    (las de cada IL suman 1). Fracción = peso / suma de pesos del IL; un peso
+    vacío cuenta como la media de los que sí están puestos (1 si no hay)."""
     out: dict[tuple[int, str], float] = {}
     for il, enlaces in enlaces_por_il(acts).items():
-        if len(enlaces) == 1:
-            out[(enlaces[0][0]["id"], il)] = 1.0
-            continue
         pas = [_num(e.get("PA")) for _a, e in enlaces]
-        asignado = sum(p for p in pas if p is not None)
-        vacios = sum(1 for p in pas if p is None)
-        relleno = max(0.0, 100.0 - asignado) / vacios if vacios else 0.0
+        puestos = [float(p) for p in pas if p is not None]
+        relleno = sum(puestos) / len(puestos) if puestos else 1.0
         w = [float(p) if p is not None else relleno for p in pas]
         total = sum(w)
         for (a, _e), x in zip(enlaces, w):
@@ -71,30 +66,22 @@ def fraccion_por_enlace(acts: list[dict]) -> dict[tuple[int, str], float]:
 
 
 def reparto_pendiente(acts: list[dict]) -> list[str]:
-    """IL que están en varias actividades y cuyo peso aún no está repartido
-    (algún hueco vacío o no suman 100 %)."""
-    out = []
-    for il, enlaces in enlaces_por_il(acts).items():
-        if len(enlaces) < 2:
-            continue
-        pas = [_num(e.get("PA")) for _a, e in enlaces]
-        if any(p is None for p in pas) or abs(sum(pas) - 100.0) > TOLERANCIA:
-            out.append(il)
-    return out
+    """IL que están en varias actividades y a los que aún les falta algún peso."""
+    return [
+        il for il, enlaces in enlaces_por_il(acts).items()
+        if len(enlaces) > 1 and any(_num(e.get("PA")) is None for _a, e in enlaces)
+    ]
 
 
 def repartir_iguales(acts: list[dict], ils: list[str] | None = None) -> list[dict]:
-    """Reparte a partes iguales el peso de los IL indicados (por defecto, los
-    pendientes) entre las actividades que los evalúan."""
+    """Reparte a partes iguales (peso 1 a cada actividad) los IL indicados
+    (por defecto, los pendientes)."""
     objetivo = set(reparto_pendiente(acts) if ils is None else ils)
     nuevas = [dict(a, ils=[dict(e) for e in a.get("ils", [])]) for a in acts]
     for il, enlaces in enlaces_por_il(nuevas).items():
-        if il not in objetivo or len(enlaces) < 2:
-            continue
-        n = len(enlaces)
-        parte = round(100.0 / n, 2)
-        for i, (_a, e) in enumerate(enlaces):
-            e["PA"] = parte if i < n - 1 else round(100.0 - parte * (n - 1), 2)
+        if il in objetivo and len(enlaces) > 1:
+            for _a, e in enlaces:
+                e["PA"] = 1
     return nuevas
 
 
@@ -134,6 +121,32 @@ def codigos(acts: list[dict]) -> dict[int, str]:
     return out
 
 
+def valores_enlaces(
+    acts: list[dict],
+    il_rows: list[dict],
+    ce_p: dict[str, float],
+) -> dict[tuple[int, str], float]:
+    """``{(id de actividad, IL): valor sobre la programación}`` de cada IL en
+    cada actividad =
+    ``(parte del IL en la actividad) · (PIL / ΣPIL del CE) · (P del CE / ΣP)``."""
+    il_ce = {r["IL"]: _s(r.get("CE")) for r in il_rows}
+    il_pil = {r["IL"]: float(r.get("PIL") or 0) for r in il_rows}
+    sum_pil_ce: dict[str, float] = {}
+    for r in il_rows:
+        sum_pil_ce[_s(r.get("CE"))] = sum_pil_ce.get(_s(r.get("CE")), 0.0) + float(r.get("PIL") or 0)
+    total_p = sum(ce_p.values())
+    out = {}
+    for (aid, il), parte in fraccion_por_enlace(acts).items():
+        ce = il_ce.get(il, "")
+        spil = sum_pil_ce.get(ce, 0.0)
+        out[(aid, il)] = (
+            parte
+            * (il_pil.get(il, 0.0) / spil if spil else 0.0)
+            * (ce_p.get(ce, 0.0) / total_p if total_p else 0.0)
+        )
+    return out
+
+
 def valores_actividades(
     acts: list[dict],
     il_rows: list[dict],
@@ -143,32 +156,16 @@ def valores_actividades(
     SITUACIÓN DE APRENDIZAJE" de INFORMES, ahora con actividades que evalúan
     varios IL.
 
-    ``valor sobre la programación`` de una actividad = Σ de sus IL de
-    ``(parte del IL en la actividad) · (PIL / ΣPIL del CE) · (P del CE / ΣP)``.
-    ``valor sobre la SA`` = ese valor / Σ de los valores de las actividades de la
-    misma situación de aprendizaje.
+    ``valor sobre la programación`` de una actividad = Σ de sus IL (ver
+    ``valores_enlaces``). ``valor sobre la SA`` = ese valor / Σ de los valores
+    de las actividades de la misma situación de aprendizaje.
     """
-    il_ce = {r["IL"]: _s(r.get("CE")) for r in il_rows}
-    il_pil = {r["IL"]: float(r.get("PIL") or 0) for r in il_rows}
-    sum_pil_ce: dict[str, float] = {}
-    for r in il_rows:
-        sum_pil_ce[_s(r.get("CE"))] = sum_pil_ce.get(_s(r.get("CE")), 0.0) + float(r.get("PIL") or 0)
-    total_p = sum(ce_p.values())
-    frac = fraccion_por_enlace(acts)
+    por_enlace = valores_enlaces(acts, il_rows, ce_p)
     cod = codigos(acts)
 
     out = []
     for a in acts:
-        valor = 0.0
-        for e in a.get("ils", []):
-            il = _s(e.get("IL"))
-            ce = il_ce.get(il, "")
-            spil = sum_pil_ce.get(ce, 0.0)
-            valor += (
-                frac.get((a["id"], il), 0.0)
-                * (il_pil.get(il, 0.0) / spil if spil else 0.0)
-                * (ce_p.get(ce, 0.0) / total_p if total_p else 0.0)
-            )
+        valor = sum(por_enlace.get((a["id"], _s(e.get("IL"))), 0.0) for e in a.get("ils", []))
         out.append({
             "id": a["id"], "SA": a.get("SA"), "A": cod[a["id"]],
             "titulo": _s(a.get("titulo")), "IE": _s(a.get("IE")),
