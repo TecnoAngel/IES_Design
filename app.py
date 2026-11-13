@@ -119,6 +119,20 @@ st.markdown(
         border-radius: 12px !important;
         box-shadow: 0 2px 10px rgba(166,24,46,0.08);
     }
+    /* Barra del proyecto abierto: una sola línea discreta, sin tarjeta. */
+    .st-key-proybar {
+        border-bottom: 1px solid var(--jcyl-line);
+        padding-bottom: 0.35rem;
+    }
+    .st-key-proybar [data-testid="stMarkdownContainer"] { margin-bottom: 0; }
+    .st-key-proybar .proy-info {
+        font-size: 0.88rem; color: #5b524b;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .st-key-proybar .proy-info b { color: #2b2622; }
+    .st-key-proybar [data-testid="stPopover"] button {
+        min-height: 36px; padding: 0.2rem 0.8rem; font-size: 0.88rem;
+    }
     /* Barra lateral de navegación: una entrada por página. */
     [data-testid="stSidebar"] {
         background: var(--jcyl-cream);
@@ -526,62 +540,87 @@ def _huella(f) -> str:
     return f"{f.name}|{hashlib.md5(f.getvalue()).hexdigest()}"
 
 
-with st.container(border=True):
-    ubar1, ubar2 = st.columns([3, 2], vertical_alignment="bottom")
-    with ubar1:
-        _modo = st.segmented_control(
-            "Proyecto", ["Abrir proyecto", "Nuevo proyecto"], default="Abrir proyecto",
-            key="proy_modo", label_visibility="collapsed",
-        )
-        if _modo == "Nuevo proyecto":
-            n1, n2, n3, n4 = st.columns([1.5, 0.8, 2.6, 0.9])
-            _etapa = n1.selectbox(
-                "Etapa", cur.ETAPAS, format_func=lambda e: cur.ETAPA_NOMBRE[e], key="nuevo_etapa"
-            )
-            _curso = n2.selectbox(
-                "Curso", cur.cursos(CUR_DB, _etapa), format_func=lambda c: f"{c}º", key="nuevo_curso"
-            )
-            _mats = {m["id"]: m["nombre"] for m in cur.materias(CUR_DB, _etapa, _curso)}
-            _mid = n3.selectbox(
-                "Materia", list(_mats), format_func=lambda i: _mats.get(i, i), key="nuevo_materia"
-            )
-            n4.markdown("<div style='height:1.75rem'></div>", unsafe_allow_html=True)
-            if n4.button("Crear", type="primary", use_container_width=True, key="nuevo_crear",
-                         disabled=not _mid):
-                _cargar_estado(estado_vacio(_materia_curriculo(CUR_DB, _mid)), _mid)
-                # Un proyecto vacío aún no tiene SA ni indicadores: no se avisa
-                # de coherencia hasta que se vuelva a abrir (o al generar Word).
-                st.session_state.consist_seen = True
-                st.rerun()
+def _abrir_o_crear(apilado: bool) -> None:
+    """Abrir un proyecto (.sqlite) o crear uno nuevo (etapa → curso → materia).
+    Con `apilado` los desplegables van uno debajo de otro (caben en el
+    desplegable «Cambiar de proyecto»); si no, en una fila."""
+    _modo = st.segmented_control(
+        "Proyecto", ["Abrir proyecto", "Nuevo proyecto"], default="Abrir proyecto",
+        key="proy_modo", label_visibility="collapsed",
+    )
+    if _modo == "Nuevo proyecto":
+        if apilado:
+            n1 = n2 = n3 = n4 = st.container()
         else:
-            proy_file = st.file_uploader(
-                "Proyecto (.sqlite)", type=["sqlite", "db"], key="proy_uploader",
-                label_visibility="collapsed",
-            )
-            # Solo se carga un archivo subido NUEVO (si no, al crear un proyecto
-            # nuevo con un archivo aún en el uploader, lo volvería a pisar).
-            if proy_file is not None and st.session_state.get("proy_file_seen") != _huella(proy_file):
-                st.session_state.proy_file_seen = _huella(proy_file)
-                try:
-                    _cargar_estado(leer_proyecto(proy_file.getvalue()), proy_file.name.rsplit(".", 1)[0])
-                except Exception as exc:
-                    st.error(f"No se ha podido abrir el proyecto: {exc}")
-        # Una sesión abierta con la versión anterior (el servidor recarga el
-        # código sin perder la sesión, y el mismo archivo no se vuelve a leer)
-        # puede traer actividades de un solo IL, sin «id»: se convierten aquí.
-        if _hay_proyecto() and any("id" not in a for a in st.session_state.get("pa_acts", [])):
-            st.session_state.pa_acts = desde_formato_antiguo(
-                st.session_state.pa_acts, st.session_state.get("il_rows", [])
-            )
-        if _hay_proyecto():
-            _m = st.session_state.proy_materia
-            st.caption(
-                f"**{_m['nombre']}** · {_m['curso']}º {cur.ETAPA_NOMBRE.get(_m['etapa_app'], _m['etapa'])}"
-                f" · {_m.get('normativa') or ''}"
-                + (f" · guardado {st.session_state.prog_sello_cargado}"
-                   if st.session_state.get("prog_sello_cargado") else "")
-            )
-    dl_box = ubar2.container()
+            n1, n2, n3, n4 = st.columns([1.5, 0.8, 2.6, 0.9], vertical_alignment="bottom")
+        _etapa = n1.selectbox(
+            "Etapa", cur.ETAPAS, format_func=lambda e: cur.ETAPA_NOMBRE[e], key="nuevo_etapa"
+        )
+        _curso = n2.selectbox(
+            "Curso", cur.cursos(CUR_DB, _etapa), format_func=lambda c: f"{c}º", key="nuevo_curso"
+        )
+        _mats = {m["id"]: m["nombre"] for m in cur.materias(CUR_DB, _etapa, _curso)}
+        _mid = n3.selectbox(
+            "Materia", list(_mats), format_func=lambda i: _mats.get(i, i), key="nuevo_materia"
+        )
+        if n4.button("Crear", type="primary", use_container_width=True, key="nuevo_crear",
+                     disabled=not _mid):
+            _cargar_estado(estado_vacio(_materia_curriculo(CUR_DB, _mid)), _mid)
+            # Un proyecto vacío aún no tiene SA ni indicadores: no se avisa
+            # de coherencia hasta que se vuelva a abrir (o al generar Word).
+            st.session_state.consist_seen = True
+            st.rerun()
+    else:
+        proy_file = st.file_uploader(
+            "Proyecto (.sqlite)", type=["sqlite", "db"], key="proy_uploader",
+            label_visibility="collapsed",
+        )
+        # Solo se carga un archivo subido NUEVO (si no, al crear un proyecto
+        # nuevo con un archivo aún en el uploader, lo volvería a pisar).
+        if proy_file is not None and st.session_state.get("proy_file_seen") != _huella(proy_file):
+            st.session_state.proy_file_seen = _huella(proy_file)
+            try:
+                _cargar_estado(leer_proyecto(proy_file.getvalue()), proy_file.name.rsplit(".", 1)[0])
+            except Exception as exc:
+                st.error(f"No se ha podido abrir el proyecto: {exc}")
+            else:
+                # Se vuelve a pintar ya con la barra compacta.
+                st.rerun()
+
+
+# Barra del proyecto. Sin proyecto, abrir/crear es lo único que se puede hacer
+# y va a la vista. Con proyecto se queda en una sola línea: qué proyecto es,
+# «Cambiar de proyecto» (desplegable con lo mismo) y «Guardar proyecto».
+if _hay_proyecto():
+    import html as _html
+
+    with st.container(key="proybar"):
+        ubar1, ubar2, ubar3 = st.columns([4.6, 2.1, 3.3], vertical_alignment="center")
+        _m = st.session_state.proy_materia
+        _det = f"{_m['curso']}º {cur.ETAPA_NOMBRE.get(_m['etapa_app'], _m['etapa'])}"
+        if st.session_state.get("prog_sello_cargado"):
+            _det += f" · guardado {st.session_state.prog_sello_cargado}"
+        _tit = f"{_m['nombre']} · {_det}" + (f" · {_m['normativa']}" if _m.get("normativa") else "")
+        ubar1.markdown(
+            f'<div class="proy-info" title="{_html.escape(_tit, quote=True)}">'
+            f'<b>{_html.escape(_m["nombre"])}</b> · {_html.escape(_det)}</div>',
+            unsafe_allow_html=True,
+        )
+        with ubar2.popover("Cambiar de proyecto"):
+            _abrir_o_crear(apilado=True)
+        dl_box = ubar3.container()
+else:
+    with st.container(border=True):
+        _abrir_o_crear(apilado=False)
+    dl_box = st.container()
+# Una sesión abierta con la versión anterior (el servidor recarga el código
+# sin perder la sesión, y el mismo archivo no se vuelve a leer) puede traer
+# actividades de un solo IL, sin «id»: se convierten aquí.
+if _hay_proyecto() and any("id" not in a for a in st.session_state.get("pa_acts", [])):
+    st.session_state.pa_acts = desde_formato_antiguo(
+        st.session_state.pa_acts, st.session_state.get("il_rows", [])
+    )
+
 
 def _trimestre_txt(ev):
     try:
@@ -710,7 +749,7 @@ def _nombre_sin_sello(nombre: str) -> str:
 def _guardar_archivo_html(
     data: bytes, base: str, *, ext: str = ".sqlite", etiqueta: str = "Guardar proyecto",
     descripcion: str = "Proyecto de IES Diseño", mime: str = "application/vnd.sqlite3",
-    height: int = 74,
+    height: int = 38,
 ) -> None:
     """Un único botón «Guardar proyecto»: si el navegador soporta elegir dónde
     guardar (Chrome/Edge, la File System Access API) abre el explorador de
@@ -744,16 +783,19 @@ def _guardar_archivo_html(
     components.html(
         f"""
         <style>
-        body {{ margin: 0; }}
+        body {{ margin: 0; display: flex; align-items: center; gap: 10px; height: 38px; }}
         .ies-save-btn {{
-            /* margin-top: lo centra en altura con el cargador de la izquierda */
-            margin-top: 20px; min-height: 36px; padding: 0.3rem 1rem; border-radius: 8px; border: none;
+            flex: none; min-height: 36px; padding: 0.3rem 1rem; border-radius: 8px; border: none;
             background: #A6182E; color: #fff; font-weight: 600; font-size: 0.92rem;
             font-family: "Source Sans Pro", sans-serif; cursor: pointer;
         }}
         .ies-save-btn:hover:not(:disabled) {{ background: #8f1427; }}
         .ies-save-btn:disabled {{ background: #d8cec6; color: #7a6f66; cursor: not-allowed; }}
-        .ies-save-msg {{ font-size: 0.75rem; line-height: 1.2; margin-top: 2px; min-height: 1em; }}
+        /* El mensaje va a la derecha del botón, en una línea (entero en el title). */
+        .ies-save-msg {{
+            font-size: 0.78rem; font-family: "Source Sans Pro", sans-serif; min-width: 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }}
         </style>
         <button id="iesSaveBtn" class="ies-save-btn">{html.escape(etiqueta)}</button>
         <div id="iesSaveMsg" class="ies-save-msg"></div>
@@ -827,6 +869,7 @@ def _guardar_archivo_html(
                     }}
                 }} finally {{
                     btn.disabled = false;
+                    msg.title = msg.textContent;
                 }}
             }});
         }})();
@@ -1450,11 +1493,8 @@ with dl_box:
         if st.session_state.get("prog_msg"):
             st.caption(f"⚠️ {st.session_state.prog_msg}")
         if st.session_state.get("prog_out"):
-            _sello = st.session_state.get("prog_sello", "")
             _base = _nombre_sin_sello(st.session_state.proy_nombre)
             _guardar_archivo_html(st.session_state.prog_out, _base)
-            if _sello:
-                st.caption(f"Guardado: {_sello}")
 
 # PÁGINA: DISEÑO DE LA PROGRAMACIÓN
 if page == "Diseño de la programación":
