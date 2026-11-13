@@ -43,9 +43,9 @@ from tools.programacion_aula_editor import (
 
 # Anchos relativos de las columnas de cada cuadro (st.columns).
 #                     código  nombre  borrar  IL   instrumento  % prog  % SA
-ANCHOS_ACTIVIDADES = [0.55,   3.6,    0.45,   3.4, 1.8,         1.0,    1.0]
-#              IL   instrumento  actividad  peso  %    % prog  % SA  factor
-ANCHOS_PESOS = [2.6, 1.6,         2.8,       1.1,  0.9, 1.0,    1.0,  1.0]
+ANCHOS_ACTIVIDADES = [0.55,   3.0,    0.45,   3.8, 2.0,         1.0,    1.0]
+#               actividad  peso  %    % prog  % SA  factor
+ANCHOS_PESOS = [4.4,       1.2,  1.0, 1.0,    1.0,  1.0]
 
 # Un color pastel por actividad (por su posición en la SA), el mismo en los
 # tres cuadros: (fondo, fondo suave, franja, texto). Texto ≥ 4,5:1 sobre blanco.
@@ -58,19 +58,76 @@ TONOS = [
     ("#FBF3D5", "#FDFAEC", "#E2C766", "#6E5A10"),
 ]
 
-# Estilos propios de esta pestaña (las etiquetas .pa-tag, los títulos .pa-sec
-# y la tabla .cuad del cuaderno están en el CSS general de app.py).
+# Estilos propios de esta pestaña (las etiquetas .pa-tag y la tabla .cuad del
+# cuaderno están en el CSS general de app.py). Streamlit pone a cada
+# st.container(key="x") la clase «st-key-x»: así se da color a cuadros y filas.
+#   actbox_N   cada uno de los tres cuadros      actcab_N   fila de títulos de columna
+#   actfila_ID fila de una actividad (cuadro 1)  actpie_1   fila de totales
+#   actil_N    bloque de un indicador (cuadro 2) actpeso_ID_N  fila de una actividad en él
 CSS = """
 <style>
-.act-cab  { font-size: 0.74rem; font-weight: 700; color: #5c524a;
-            text-transform: uppercase; letter-spacing: 0.05em; }
+/* Streamlit resta 1rem por debajo a cada texto (espera un párrafo); con
+   nuestras celdas eso descuadra las filas: se anula dentro de los cuadros. */
+[class*="st-key-actbox_"] [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
+
+/* Los tres cuadros: franja carmín arriba y título grande con su número */
+[class*="st-key-actbox_"] { border-top: 4px solid #A6182E !important; border-radius: 12px !important;
+                            background: #fff; box-shadow: 0 4px 16px rgba(34,28,24,0.06); }
+.act-titulo { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.2rem; }
+.act-n    { flex: none; width: 2rem; height: 2rem; border-radius: 50%; background: #A6182E; color: #fff;
+            font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; justify-content: center; }
+.act-t    { font-size: 1.25rem; font-weight: 700; color: #7d1022; line-height: 1.2; }
+.act-sub  { font-size: 0.88rem; color: #5c524a; margin: 0 0 0.3rem 2.7rem; }
+
+/* Fila de títulos de columna, filas y totales: mismo margen para que todo quede en columna */
+[class*="st-key-actcab_"], [class*="st-key-actfila_"], [class*="st-key-actpeso_"], .st-key-actpie_1 {
+    padding: 0.45rem 0.8rem; border-left: 6px solid transparent; border-radius: 8px; }
+[class*="st-key-actcab_"] { background: #5c524a; }
+.act-cab  { font-size: 0.74rem; font-weight: 700; color: #fff; text-transform: uppercase;
+            letter-spacing: 0.05em; white-space: nowrap; }
+.st-key-actpie_1 { border-top: 2px solid #e3d5c3; border-radius: 0; }
+/* (en el cuadro 2 las filas van dentro del bloque de su indicador, que tiene su propio margen) */
+.st-key-actcab_2 { padding-left: calc(1.35rem + 1px); padding-right: calc(1.35rem + 1px); }
+
+/* Fila de una actividad: fondo y franja de su color (variables --suave/--franja, una por actividad) */
+[class*="st-key-actfila_"], [class*="st-key-actpeso_"] { background: var(--suave); border-left-color: var(--franja); }
+[class*="st-key-actfila_"] [data-baseweb="input"], [class*="st-key-actfila_"] [data-baseweb="input"] > div,
+[class*="st-key-actfila_"] input, [class*="st-key-actfila_"] [data-testid="stMultiSelect"] [role="group"],
+[class*="st-key-actpeso_"] [data-testid="stNumberInputContainer"],
+[class*="st-key-actpeso_"] [data-testid="stNumberInputContainer"] * { background: #fff !important; }
+[class*="st-key-actfila_"] input { font-weight: 600; }
+
+/* Bloque de un indicador en el cuadro 2 */
+[class*="st-key-actil_"] { border: 1px solid #e3d5c3; border-radius: 10px; background: #fbf6ef; padding: 0.55rem; }
+.act-il-cab { display: flex; align-items: baseline; gap: 0.6rem; padding: 0.1rem 0.3rem; }
+.act-il   { flex: none; font-weight: 700; color: #fff; background: #221c18; border-radius: 6px; padding: 0.05rem 0.5rem; }
+.act-il-txt { flex: 1; font-size: 0.92rem; font-weight: 600; color: #221c18; line-height: 1.3; }
+.act-il-ie { flex: none; }
+
+/* Textos de las celdas */
 .act-num  { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .act-total { font-weight: 700; }
+.act-fuerte { font-weight: 700; font-size: 1.02rem; }
 .act-cod  { display: inline-block; min-width: 2.3rem; text-align: center; font-weight: 700;
             font-size: 0.9rem; border-radius: 6px; padding: 0.1rem 0.4rem; border: 1px solid; }
-.act-il   { font-weight: 700; }
-.act-desc { font-size: 0.8rem; color: #5c524a; line-height: 1.25; }
-.act-raya { border-top: 1px solid #eadfd2; margin: 0.1rem 0 0.5rem 0; }
+.act-nombre { font-weight: 600; }
+.act-ie   { display: inline-block; font-size: 0.82rem; font-weight: 600; color: #221c18; background: #fff;
+            border: 1px solid #cdbba5; border-radius: 999px; padding: 0.1rem 0.65rem; }
+/* Selector de indicadores: una etiqueta por línea con el código y el texto
+   del indicador; si no cabe se corta con «…» y se ve entero al pasar el ratón. */
+[class*="st-key-paact_ils_"] [data-testid="stMultiSelect"] [role="group"] {
+    height: auto !important; max-height: none !important; }
+[class*="st-key-paact_ils_"] [data-testid="stMultiSelectTagsContainer"] {
+    overflow: hidden !important; padding: 5px 0; }
+[class*="st-key-paact_ils_"] [data-testid="stMultiSelectTagsContainer"] > [role="group"] {
+    display: flex; flex-direction: column; align-items: stretch; gap: 4px; flex: 1 1 auto; min-width: 0; }
+[class*="st-key-paact_ils_"] [data-tag] {
+    display: flex; max-width: 100% !important; min-width: 0; background: #fff !important;
+    border: 1px solid #cdbba5; }
+[class*="st-key-paact_ils_"] [data-tag] > span {
+    flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: #221c18 !important; cursor: help; }
+[class*="st-key-paact_ils_"] [data-tag] * { color: #221c18 !important; }
 </style>
 """
 
@@ -97,17 +154,23 @@ def _celda(col, texto: str, clase: str = "") -> None:
     col.markdown(f'<div class="{clase}">{texto}</div>', unsafe_allow_html=True)
 
 
-def _cabecera(anchos: list[float], titulos: list[str], desde_num: int) -> None:
-    """Fila de títulos de un cuadro; las columnas desde `desde_num` son
-    numéricas y van alineadas a la derecha."""
-    for i, (col, titulo) in enumerate(zip(st.columns(anchos), titulos)):
-        _celda(col, titulo, "act-cab act-num" if i >= desde_num else "act-cab")
-    _html('<div class="act-raya"></div>')
+def _cabecera(n: int, anchos: list[float], titulos: list[str], desde_num: int) -> None:
+    """Fila de títulos de columna del cuadro `n`; las columnas desde
+    `desde_num` son numéricas y van alineadas a la derecha."""
+    with st.container(key=f"actcab_{n}"):
+        for i, (col, titulo) in enumerate(zip(st.columns(anchos), titulos)):
+            _celda(col, titulo, "act-cab act-num" if i >= desde_num else "act-cab")
 
 
-def _titulo(texto: str, sub: str) -> None:
-    _html(f'<div class="pa-sec" style="margin-top:0">{escape(texto)}</div>'
-          f'<div class="pa-sec-sub">{escape(sub)}</div>')
+def _titulo(n: int, texto: str, sub: str) -> None:
+    """Título de un cuadro: número en un círculo, título y línea explicativa."""
+    _html(f'<div class="act-titulo" role="heading" aria-level="3"><span class="act-n">{n}</span>'
+          f'<span class="act-t">{escape(texto)}</span></div>'
+          f'<div class="act-sub">{escape(sub)}</div>')
+
+
+def _instrumento(texto) -> str:
+    return f'<span class="act-ie">{escape(str(texto))}</span>' if texto else "—"
 
 
 def _etiqueta_actividad(act: dict, cod: dict, tono: dict) -> str:
@@ -213,11 +276,18 @@ def pintar(sa, il_rows: list[dict], ce_p: dict[str, float]) -> None:
     # Valor de toda la SA sobre la programación (para los % sobre la SA)
     d["total_sa"] = sum(d["valor_act"][a["id"]]["valor_prog"] for a in acts_sa)
 
-    with st.container(border=True):
+    # Color de las filas de cada actividad (cuadros 1 y 2)
+    _html("<style>" + "".join(
+        f'.st-key-actfila_{aid}, [class*="st-key-actpeso_{aid}_"] '
+        f"{{ --suave:{suave}; --franja:{franja}; }}"
+        for aid, (_fondo, suave, franja, _tinta) in d["tono"].items()
+    ) + "</style>")
+
+    with st.container(border=True, key="actbox_1"):
         _cuadro_actividades(d)
-    with st.container(border=True):
+    with st.container(border=True, key="actbox_2"):
         _cuadro_pesos(d)
-    with st.container(border=True):
+    with st.container(border=True, key="actbox_3"):
         _cuadro_cuaderno(d)
 
 
@@ -227,67 +297,73 @@ def pintar(sa, il_rows: list[dict], ce_p: dict[str, float]) -> None:
 def _cuadro_actividades(d: dict) -> None:
     ss = st.session_state
     il_info = d["il_info"]
-    _titulo("1 · Actividades",
-            "Pon nombre a cada actividad y elige el indicador que evalúa (pueden ser varios "
-            "si comparten instrumento; su texto está en el cuadro 2). El instrumento es el del "
-            "indicador. «% prog.» y «% SA»: valor sobre la programación y sobre la situación "
-            "de aprendizaje.")
-    _cabecera(ANCHOS_ACTIVIDADES,
+
+    def etiqueta_il(il: str) -> str:
+        """«1.2.1 · texto del indicador» (lo que se ve en el selector)."""
+        texto = str(il_info.get(il, {}).get("DIL") or "")
+        return f"{il} · {texto}" if texto else il
+
+    _titulo(1, "Actividades",
+            "Pon nombre a cada actividad y elige el indicador de logro que evalúa (pueden ser "
+            "varios si comparten instrumento). El instrumento es el del indicador. «% prog.» y "
+            "«% SA»: valor sobre la programación y sobre la situación de aprendizaje.")
+    _cabecera(1, ANCHOS_ACTIVIDADES,
               ["", "Actividad", "", "Indicador de logro", "Instrumento",
                "% prog.", "% SA"], desde_num=5)
 
     for a in d["acts_sa"]:
         aid = a["id"]
         elegidos = [e["IL"] for e in a.get("ils", [])]
-        c_cod, c_nom, c_del, c_il, c_ie, c_prog, c_sa = st.columns(
-            ANCHOS_ACTIVIDADES, vertical_alignment="center")
+        with st.container(key=f"actfila_{aid}"):
+            c_cod, c_nom, c_del, c_il, c_ie, c_prog, c_sa = st.columns(
+                ANCHOS_ACTIVIDADES, vertical_alignment="center")
 
-        _celda(c_cod, _etiqueta_actividad(a, d["cod"], d["tono"]))
+            _celda(c_cod, _etiqueta_actividad(a, d["cod"], d["tono"]))
 
-        ss[f"paact_tit_{aid}"] = a.get("titulo", "")
-        c_nom.text_input(
-            "Nombre de la actividad", key=f"paact_tit_{aid}",
-            placeholder="Nombre de la actividad", label_visibility="collapsed",
-            on_change=_al_cambiar_actividad, args=(aid, il_info),
-        )
+            ss[f"paact_tit_{aid}"] = a.get("titulo", "")
+            c_nom.text_input(
+                "Nombre de la actividad", key=f"paact_tit_{aid}",
+                placeholder="Nombre de la actividad", label_visibility="collapsed",
+                on_change=_al_cambiar_actividad, args=(aid, il_info),
+            )
 
-        c_del.button(
-            "", key=f"paact_del_{aid}", icon=":material/delete:", type="tertiary",
-            help=f"Eliminar la actividad {d['cod'][aid]}",
-            on_click=_borrar_actividad, args=(aid,),
-        )
+            c_del.button(
+                "", key=f"paact_del_{aid}", icon=":material/delete:", type="tertiary",
+                help=f"Eliminar la actividad {d['cod'][aid]}",
+                on_click=_borrar_actividad, args=(aid,),
+            )
 
-        # Indicadores que se ofrecen: todos los de la SA si aún no hay ninguno
-        # elegido; si ya hay, solo los del mismo instrumento.
-        if elegidos:
-            opciones = [r["IL"] for r in d["ils_sa"] if str(r.get("IE") or "") == str(a.get("IE") or "")]
-            opciones += [il for il in elegidos if il not in opciones]
-        else:
-            opciones = [r["IL"] for r in d["ils_sa"]]
-        ss[f"paact_ils_{aid}"] = elegidos
-        c_il.multiselect(
-            "Indicador de logro", opciones, key=f"paact_ils_{aid}",
-            placeholder="Elige el indicador",
-            label_visibility="collapsed",
-            on_change=_al_cambiar_actividad, args=(aid, il_info),
-        )
-
-        if not elegidos:
-            _celda(c_ie, '<span class="pa-tag warn">Sin indicador</span>')
-        else:
-            _celda(c_ie, escape(a.get("IE") or "—"))
-        valor = d["valor_act"][aid]
-        _celda(c_prog, _pct(valor["valor_prog"]), "act-num")
-        _celda(c_sa, _pct(valor["valor_sa"]), "act-num")
+            # Indicadores que se ofrecen: todos los de la SA si aún no hay
+            # ninguno elegido; si ya hay, solo los del mismo instrumento.
+            if elegidos:
+                opciones = [r["IL"] for r in d["ils_sa"]
+                            if str(r.get("IE") or "") == str(a.get("IE") or "")]
+                opciones += [il for il in elegidos if il not in opciones]
+            else:
+                opciones = [r["IL"] for r in d["ils_sa"]]
+            ss[f"paact_ils_{aid}"] = elegidos
+            c_il.multiselect(
+                "Indicador de logro", opciones, key=f"paact_ils_{aid}",
+                format_func=etiqueta_il, placeholder="Elige el indicador",
+                label_visibility="collapsed",
+                on_change=_al_cambiar_actividad, args=(aid, il_info),
+            )
+            if not elegidos:
+                _celda(c_ie, '<span class="pa-tag warn">Sin indicador</span>')
+            else:
+                _celda(c_ie, _instrumento(a.get("IE")))
+            valor = d["valor_act"][aid]
+            _celda(c_prog, _pct(valor["valor_prog"]), "act-num act-fuerte")
+            _celda(c_sa, _pct(valor["valor_sa"]), "act-num act-fuerte")
 
     # Fila de totales
-    _html('<div class="act-raya"></div>')
-    c = st.columns(ANCHOS_ACTIVIDADES, vertical_alignment="center")
-    c[1].button("Añadir actividad", key=f"paact_add_{d['sa']}", icon=":material/add:",
-                on_click=_anadir_actividad, args=(d["sa"],))
-    _celda(c[4], "Total", "act-total")
-    _celda(c[5], _pct(d["total_sa"]), "act-num act-total")
-    _celda(c[6], _pct(1.0 if d["total_sa"] else 0.0), "act-num act-total")
+    with st.container(key="actpie_1"):
+        c = st.columns(ANCHOS_ACTIVIDADES, vertical_alignment="center")
+        c[1].button("Añadir actividad", key=f"paact_add_{d['sa']}", icon=":material/add:",
+                    type="primary", on_click=_anadir_actividad, args=(d["sa"],))
+        _celda(c[4], "Total", "act-total")
+        _celda(c[5], _pct(d["total_sa"]), "act-num act-fuerte")
+        _celda(c[6], _pct(1.0 if d["total_sa"] else 0.0), "act-num act-fuerte")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -296,63 +372,57 @@ def _cuadro_actividades(d: dict) -> None:
 def _cuadro_pesos(d: dict) -> None:
     ss = st.session_state
 
-    _titulo("2 · Peso de cada actividad en su indicador",
+    _titulo(2, "Peso de cada actividad en su indicador",
             "Solo se escribe la columna «Peso». Si un indicador se evalúa en varias "
             "actividades, su peso se reparte en proporción (pesos 2 y 1 → 66,67 % y 33,33 %); "
-            "si prefieres trabajar en %, pon pesos que sumen 100. El factor es el que se pone "
-            "en iDoceo o Additio.")
-    _cabecera(ANCHOS_PESOS,
-              ["Indicador de logro", "Instrumento", "Actividad", "Peso", "%",
-               "% prog.", "% SA", "Factor"], desde_num=4)
+            "si prefieres trabajar en %, pon pesos que sumen 100. El factor es el que se pone en "
+            "iDoceo o Additio.")
+    _cabecera(2, ANCHOS_PESOS,
+              ["Actividad", "Peso", "%", "% prog.", "% SA", "Factor"], desde_num=2)
 
+    # Un bloque por indicador de la SA: su código, su texto y su instrumento
+    # arriba y, debajo, una fila por cada actividad que lo evalúa.
     for n, r in enumerate(d["ils_sa"]):
         il = r["IL"]
         enlaces = d["enlaces"].get(il, [])        # [(actividad, enlace)] de este IL
         pendiente = il in d["pendientes"]
-        if n:
-            _html('<div class="act-raya"></div>')
 
-        desc = str(r.get("DIL") or "")
-        celda_il = (f'<span class="act-il">{escape(il)}</span>'
-                    + (' <span class="pa-tag warn">Faltan pesos</span>' if pendiente else "")
-                    + f'<div class="act-desc" title="{escape(desc)}">'
-                    + escape(desc[:90] + "…" if len(desc) > 90 else desc) + "</div>")
+        with st.container(key=f"actil_{n}"):
+            aviso = ""
+            if not enlaces:
+                aviso = '<span class="pa-tag warn">Sin actividad</span>'
+            elif pendiente:
+                aviso = '<span class="pa-tag warn">Faltan pesos</span>'
+            _html(f'<div class="act-il-cab"><span class="act-il">{escape(il)}</span>'
+                  f'<span class="act-il-txt">{escape(str(r.get("DIL") or ""))}</span>'
+                  f'<span class="act-il-ie">{aviso} {_instrumento(r.get("IE"))}</span></div>')
 
-        if not enlaces:  # indicador que aún no evalúa ninguna actividad
-            c = st.columns(ANCHOS_PESOS, vertical_alignment="center")
-            _celda(c[0], celda_il)
-            _celda(c[1], escape(str(r.get("IE") or "—")))
-            _celda(c[2], '<span class="pa-tag warn">Sin actividad</span>')
-            continue
+            for a, enlace in enlaces:
+                aid = a["id"]
+                with st.container(key=f"actpeso_{aid}_{n}"):
+                    c_act, c_peso, c_pct, c_prog, c_sa, c_fac = st.columns(
+                        ANCHOS_PESOS, vertical_alignment="center")
 
-        for i, (a, enlace) in enumerate(enlaces):
-            aid = a["id"]
-            c_il, c_ie, c_act, c_peso, c_pct, c_prog, c_sa, c_fac = st.columns(
-                ANCHOS_PESOS, vertical_alignment="center")
-            if i == 0:  # el indicador y su instrumento, solo en su primera fila
-                _celda(c_il, celda_il)
-                _celda(c_ie, escape(str(r.get("IE") or "—")))
+                    _celda(c_act, _etiqueta_actividad(a, d["cod"], d["tono"])
+                           + f' <span class="act-nombre">{escape(a.get("titulo") or "Sin nombre")}</span>')
 
-            _celda(c_act, _etiqueta_actividad(a, d["cod"], d["tono"]) + " "
-                   + escape(a.get("titulo") or "Sin nombre"))
+                    clave = f"paact_pa_{aid}_{il}"
+                    ss[clave] = None if enlace.get("PA") is None else float(enlace["PA"])
+                    c_peso.number_input(
+                        f"Peso de {d['cod'][aid]} en el indicador {il}", key=clave,
+                        min_value=0.0, step=1.0, format="%g", placeholder="Peso",
+                        label_visibility="collapsed",
+                        on_change=_al_cambiar_peso, args=(aid, il),
+                    )
 
-            clave = f"paact_pa_{aid}_{il}"
-            ss[clave] = None if enlace.get("PA") is None else float(enlace["PA"])
-            c_peso.number_input(
-                f"Peso de {d['cod'][aid]} en el indicador {il}", key=clave,
-                min_value=0.0, step=1.0, format="%g", placeholder="Peso",
-                label_visibility="collapsed",
-                on_change=_al_cambiar_peso, args=(aid, il),
-            )
-
-            parte = d["parte"].get((aid, il), 0.0)
-            valor = d["valor_enlace"].get((aid, il), 0.0)
-            _celda(c_pct, _pct(parte), "act-num act-total")
-            _celda(c_prog, _pct(valor), "act-num")
-            _celda(c_sa, _pct(valor / d["total_sa"] if d["total_sa"] else 0.0), "act-num")
-            # Factor = PIL · parte del IL que se evalúa en esta actividad
-            factor = "?" if pendiente else _numero(float(r.get("PIL") or 0) * parte)
-            _celda(c_fac, factor, "act-num act-total")
+                    parte = d["parte"].get((aid, il), 0.0)
+                    valor = d["valor_enlace"].get((aid, il), 0.0)
+                    _celda(c_pct, _pct(parte), "act-num act-fuerte")
+                    _celda(c_prog, _pct(valor), "act-num")
+                    _celda(c_sa, _pct(valor / d["total_sa"] if d["total_sa"] else 0.0), "act-num")
+                    # Factor = PIL · parte del IL que se evalúa en esta actividad
+                    factor = "?" if pendiente else _numero(float(r.get("PIL") or 0) * parte)
+                    _celda(c_fac, factor, "act-num act-fuerte")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -362,7 +432,7 @@ def _cuadro_cuaderno(d: dict) -> None:
     """Una columna por actividad con los criterios (CE) que evalúa y el factor
     por el que se multiplica cada uno = Σ de los factores del cuadro 2 de sus
     indicadores de ese CE."""
-    _titulo("3 · Vista en el cuaderno",
+    _titulo(3, "Vista en el cuaderno",
             "Así quedan las columnas de esta situación de aprendizaje en iDoceo o Additio: "
             "cada actividad con los criterios que evalúa y el factor de cada uno.")
 

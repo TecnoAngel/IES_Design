@@ -279,6 +279,27 @@ st.markdown(
     .pa-tag.warn { background: #fff1cc; color: #7a4d00; border-color: #e3b04b; }
     .pa-tag.ok { background: #e3f3e6; color: #1e6b34; border-color: #9fd0a9; }
     .pa-tag.info { background: var(--jcyl-cream); color: #5c524a; border-color: var(--jcyl-line); }
+    /* Selector de situación de aprendizaje (Descripción SA y Actividades):
+       banda carmín, es la selección principal de la pestaña. */
+    [class*="st-key-pasel_"] {
+        background: linear-gradient(100deg, #a6182e 0%, #c1304c 100%);
+        border-radius: 12px; padding: 0.8rem 1.1rem 1rem; margin-bottom: 0.4rem;
+        box-shadow: 0 6px 18px rgba(166,24,46,0.22);
+    }
+    [class*="st-key-pasel_"] label p {
+        color: #fff !important; font-size: 0.78rem !important; font-weight: 700 !important;
+        text-transform: uppercase; letter-spacing: 0.12em;
+    }
+    [class*="st-key-pasel_"] [data-testid="stSelectbox"] [role="group"] {
+        background: #fff !important; border: 2px solid var(--jcyl-gold) !important;
+        border-radius: 10px !important; min-height: 3.2rem;
+    }
+    [class*="st-key-pasel_"] [data-testid="stSelectbox"] input {
+        font-size: 1.2rem !important; font-weight: 700 !important; color: var(--jcyl-ink) !important;
+        background: transparent !important;
+    }
+    /* Botones «Generar…» a la altura de su cargador de plantilla. */
+    .st-key-pa_gen button, .st-key-fam_gen button { min-height: 4.25rem; font-size: 1rem; font-weight: 700; }
     /* Vista en el cuaderno (iDoceo / Additio): columnas pastel por actividad. */
     .cuad-wrap {
         overflow-x: auto; background: #fff; border: 1px solid var(--jcyl-line);
@@ -326,14 +347,6 @@ st.markdown(
         border-radius: 4px; background: rgba(34,28,24,0.07);
     }
     .cuad tbody tr:last-child .alum { border-bottom-left-radius: 16px; }
-    /* Etiquetas de IL en los selectores de actividades: neutras (el rojo
-       sobre rosa se lee como error) y sin cortar. */
-    [class*="st-key-paact_ils_"] [data-tag] {
-        background: #ffffff !important; border: 1px solid #d6c3ab; max-width: 100% !important;
-    }
-    [class*="st-key-paact_ils_"] [data-tag] * {
-        color: var(--jcyl-ink) !important; max-width: none !important;
-    }
     </style>
     <div class="topbar">
         <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.18em; opacity: 0.9; margin-bottom: 0.25rem;">Programación didáctica</div>
@@ -505,7 +518,7 @@ def _huella(f) -> str:
 
 
 with st.container(border=True):
-    ubar1, ubar2 = st.columns([3, 2])
+    ubar1, ubar2 = st.columns([3, 2], vertical_alignment="bottom")
     with ubar1:
         _modo = st.segmented_control(
             "Proyecto", ["Abrir proyecto", "Nuevo proyecto"], default="Abrir proyecto",
@@ -2450,7 +2463,7 @@ elif page == "Programación de aula":
                           "Actividades por situación de aprendizaje"]
         )
 
-        _lbl = {sa: f"{sa}: {d}" for sa, d in _sa_opts}
+        _lbl = {sa: f"SA {sa}: {d}" for sa, d in _sa_opts}
         _nums_sa = [sa for sa, _ in _sa_opts]
 
         def _sel_sa(key):
@@ -2459,11 +2472,14 @@ elif page == "Programación de aula":
             pero se inicializa con la última elegida en cualquiera de ellas."""
             if ss.get("pa_sa_actual") in _nums_sa:
                 ss[key] = ss.pa_sa_actual
-            sel = st.selectbox(
-                "Situación de aprendizaje", _nums_sa,
-                format_func=lambda s: _lbl.get(s, str(s)), key=key,
-                on_change=lambda: ss.__setitem__("pa_sa_actual", ss[key]),
-            )
+            # (banda destacada: es la selección principal de la pestaña;
+            # estilo en el CSS general, clase st-key-pasel_…)
+            with st.container(key=f"pasel_{key}"):
+                sel = st.selectbox(
+                    "Situación de aprendizaje", _nums_sa,
+                    format_func=lambda s: _lbl.get(s, str(s)), key=key,
+                    on_change=lambda: ss.__setitem__("pa_sa_actual", ss[key]),
+                )
             ss.pa_sa_actual = sel
             return sel
 
@@ -2544,8 +2560,7 @@ elif page == "Programación de aula":
             if _tab_pact.open:
                 import ui_actividades
 
-                with st.columns([1, 2])[0]:
-                    sa_sel = _sel_sa("pa_sa_sel")
+                sa_sel = _sel_sa("pa_sa_sel")
                 ui_actividades.pintar(sa_sel, _il_state, _ce_p)
 
 # PÁGINA: INFORMACIÓN A FAMILIAS
