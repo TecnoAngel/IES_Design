@@ -29,10 +29,15 @@ Estado (dict)::
                          actividades de un único IL (schema 1); la app las
                          convierte con ``desde_formato_antiguo``
     fam_campos           {clave: texto}
+    redaccion            {"textos": {clave: texto}, "tablas": {clave: [fila]},
+                          "opciones": {clave: bool}}  redacción de la
+                         programación didáctica (ver tools.redaccion); solo lo
+                         que el proyecto tiene guardado
 """
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from datetime import date, datetime
@@ -88,7 +93,48 @@ CREATE TABLE actividad_indicadores (
 );
 CREATE TABLE datos_generales (campo TEXT PRIMARY KEY, valor TEXT NOT NULL DEFAULT '');
 CREATE TABLE familias (campo TEXT PRIMARY KEY, valor TEXT NOT NULL DEFAULT '');
+CREATE TABLE redaccion (
+  clave TEXT PRIMARY KEY, tipo TEXT NOT NULL, valor TEXT NOT NULL DEFAULT ''
+);
 """
+# redaccion.tipo: 'texto' (valor = el texto), 'opcion' (valor = '1' / '0': si
+# aparece una tabla o gráfica automática) o 'tabla' (valor = JSON con la lista
+# de filas, cada una {columna: texto}).
+_REDACCION_PARTES = {"texto": "textos", "tabla": "tablas", "opcion": "opciones"}
+
+
+def _leer_redaccion(con: sqlite3.Connection) -> dict:
+    """Vacío en los proyectos anteriores a la redacción (no tienen la tabla)."""
+    out: dict[str, dict] = {"textos": {}, "tablas": {}, "opciones": {}}
+    if not con.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'redaccion'"
+    ).fetchone():
+        return out
+    for clave, tipo, valor in con.execute("SELECT clave, tipo, valor FROM redaccion"):
+        if tipo == "texto":
+            out["textos"][clave] = valor
+        elif tipo == "opcion":
+            out["opciones"][clave] = valor == "1"
+        elif tipo == "tabla":
+            try:
+                filas = json.loads(valor)
+            except ValueError:
+                filas = []
+            out["tablas"][clave] = [
+                {str(k): _s(v) for k, v in f.items()} for f in filas if isinstance(f, dict)
+            ]
+    return out
+
+
+def _filas_redaccion(redaccion: dict) -> list[tuple[str, str, str]]:
+    filas = [(k, "texto", str(v or "")) for k, v in redaccion.get("textos", {}).items()]
+    filas += [(k, "opcion", "1" if v else "0") for k, v in redaccion.get("opciones", {}).items()]
+    filas += [
+        (k, "tabla", json.dumps(v, ensure_ascii=False))
+        for k, v in redaccion.get("tablas", {}).items()
+    ]
+    return filas
+
 
 
 def _s(v) -> str:
@@ -154,6 +200,7 @@ def estado_vacio(curriculo: dict) -> dict:
         "pa_sa_cols": [],
         "pa_acts": [],
         "fam_campos": {},
+        "redaccion": {},
     }
 
 
@@ -251,6 +298,7 @@ def leer_proyecto(payload: bytes) -> dict:
             "pa_acts": acts,
             "pa_acts_antiguas": antiguas,
             "fam_campos": dict(con.execute("SELECT campo, valor FROM familias")),
+            "redaccion": _leer_redaccion(con),
         }
     except sqlite3.DatabaseError as exc:
         raise ValueError(f"El archivo no es un proyecto de IES Diseño válido: {exc}") from exc
@@ -365,6 +413,10 @@ def guardar_proyecto(
             con.executemany(
                 "INSERT INTO familias VALUES (?, ?)",
                 [(k, _s(v)) for k, v in estado.get("fam_campos", {}).items()],
+            )
+            con.executemany(
+                "INSERT INTO redaccion VALUES (?, ?, ?)",
+                _filas_redaccion(estado.get("redaccion") or {}),
             )
         return con.serialize(), sello
     finally:

@@ -27,6 +27,7 @@ ejemplos/
 templates/*
 !templates/programacion_aula_template.docx
 !templates/informacion_familias_template.docx
+!templates/programacion_didactica_template.docx
 
 # Material de consulta suelto en la raíz (presentaciones de inspección, etc.)
 /*.ppt

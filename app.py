@@ -480,6 +480,7 @@ page = st.session_state.active_page
 #    cualquier página. La descarga se rellena luego (dl_box), cuando la página
 #    activa ya ha recogido los cambios.
 from tools import curriculo as cur
+from tools import redaccion as red_def
 from tools.indicadores_logro import recompute as il_recompute
 from tools.info_familias import CAMPOS_KEYS as FAM_CAMPOS
 from tools.programacion_aula_editor import desde_formato_antiguo
@@ -557,12 +558,15 @@ def _cargar_estado(estado: dict, nombre: str) -> None:
         estado.get("pa_acts_antiguas", []), ss.il_rows
     )
     ss.pa_sa_edits = {}
+    # Redacción de la programación didáctica: lo guardado en el proyecto sobre
+    # los textos y tablas propuestos (ver tools/redaccion.py).
+    ss.red = red_def.completar(estado.get("redaccion"), curm["materia"])
 
     ss.fam_campos = {k: estado["fam_campos"].get(k, "") for k in FAM_CAMPOS}
 
     # al cambiar de proyecto, se descartan los estados canónicos derivados
     for _k in (
-        "prog_out", "sa_grid_rows", "ce_rows", "il_pending", "pa_docx",
+        "prog_out", "sa_grid_rows", "ce_rows", "il_pending", "pa_docx", "pd_docx",
         "consist_seen", "fam_docx", "prog_msg", "ipf_obj_df", "il_filtro_sa",
         "pa_sa_actual",
     ):
@@ -573,7 +577,7 @@ def _cargar_estado(estado: dict, nombre: str) -> None:
     # este proyecto, o se vuelve a proponer el reparto automático si no tiene).
     for _k in [
         k for k in list(ss.keys())
-        if k.startswith(("fam_w_", "pad_", "pasa_", "ses_tr", "ses_d", "paact_", "pa_new_"))
+        if k.startswith(("fam_w_", "pad_", "pasa_", "ses_tr", "ses_d", "paact_", "pa_new_", "redw_"))
         or k in ("ses_loc", "ses_loc_on")
     ]:
         ss.pop(_k, None)
@@ -667,6 +671,9 @@ if _hay_proyecto() and any("id" not in a for a in st.session_state.get("pa_acts"
     st.session_state.pa_acts = desde_formato_antiguo(
         st.session_state.pa_acts, st.session_state.get("il_rows", [])
     )
+# Lo mismo con la redacción: una sesión anterior a ese apartado no la trae.
+if _hay_proyecto() and "red" not in st.session_state:
+    st.session_state.red = red_def.completar(None, st.session_state.proy_materia)
 
 
 def _trimestre_txt(ev):
@@ -763,7 +770,20 @@ def _estado_actual() -> dict:
         "pa_sa_cols": ss.get("pa_sa_cols", []),
         "pa_acts": ss.get("pa_acts", []),
         "fam_campos": dict(ss.get("fam_campos", {})),
+        "redaccion": ss.get("red") or {},
     }
+
+
+def _datos_redaccion() -> dict:
+    """Lo que necesitan las tablas y gráficas automáticas de la programación
+    didáctica (Redacción y su Word), con lo que hay ahora en Diseño."""
+    ss = st.session_state
+    return red_def.preparar(
+        cur=ss.cur,
+        sits=_sa_filas(),
+        il_rows=il_recompute(ss.get("il_pending", ss.get("il_rows", [])), ss.il_ce_ced, ss.il_ce_list),
+        ce_p={r["CE"]: r["P"] for r in ss.get("ce_rows", [])} or dict(ss.get("il_ce_p", {})),
+    )
 
 
 def _guardar_todo() -> bytes:
@@ -2860,18 +2880,86 @@ elif page == "doc_otros":
                                 titulo=f"Instrumentos · SA {_s['numero']}", leyenda="Instrumento",
                             ), use_container_width=True)
 
-# PÁGINAS POR HACER
+# PÁGINA: PROGRAMACIÓN DIDÁCTICA › REDACCIÓN. Una pestaña por capítulo de la
+# programación didáctica; todo lo que se ve está en ui_redaccion.py y qué
+# lleva cada capítulo, en tools/redaccion.py.
 elif page == "Redacción":
     st.markdown(
-        '<div class="panel-card"><h3>Redacción</h3>'
-        "<p>Textos de la programación didáctica.</p></div>",
+        '<div class="panel-card"><h3>Redacción de la programación didáctica</h3>'
+        "<p>Un capítulo por pestaña, según la guía de la Junta de Castilla y León. Los textos "
+        "vienen con una propuesta que puedes cambiar; las tablas y gráficas marcadas como "
+        "automáticas salen de «Diseño de la programación» y solo eliges si aparecen. El "
+        "documento se genera en «Generación de documentos».</p></div>",
         unsafe_allow_html=True,
     )
-    st.info("Apartado por hacer.")
+    if not _hay_proyecto():
+        st.info("Abre un proyecto o crea uno nuevo en la barra de arriba para empezar.")
+    else:
+        import ui_redaccion
+
+        ui_redaccion.pintar(
+            _pestanas("tabs_redaccion", [c["pestana"] for c in red_def.CAPITULOS]),
+            _datos_redaccion,
+        )
+
+# PÁGINA: GENERACIÓN DE DOCUMENTOS › PROGRAMACIÓN DIDÁCTICA
 elif page == "doc_didactica":
     st.markdown(
         '<div class="panel-card"><h3>Generar la programación didáctica</h3>'
-        "<p>Documento Word de la programación didáctica, con su plantilla.</p></div>",
+        "<p>Documento Word con la plantilla por defecto o con una tuya. Su contenido se "
+        "escribe en «Programación didáctica › Redacción» y las tablas y gráficas salen de "
+        "«Diseño de la programación».</p></div>",
         unsafe_allow_html=True,
     )
-    st.info("Apartado por hacer.")
+    if not _hay_proyecto():
+        st.info("Abre un proyecto o crea uno nuevo en la barra de arriba para empezar.")
+    else:
+        from tools.programacion_didactica import generar_docx as _generar_pd
+        from tools.programacion_didactica import plantilla_por_defecto
+
+        ss = st.session_state
+        dg1, dg2 = st.columns([2.2, 1.6], vertical_alignment="bottom")
+        _pd_tpl = dg1.file_uploader("Plantilla Word (opcional)", type=["docx"], key="pd_tpl")
+        if dg2.button("Generar programación didáctica", use_container_width=True,
+                      type="primary", key="pd_gen"):
+            try:
+                ss.pd_docx = _generar_pd(
+                    materia=ss.proy_materia, redaccion=ss.red, datos=_datos_redaccion(),
+                    template_source=_pd_tpl,
+                )
+                ss.pd_msg = ""
+            except Exception as exc:
+                ss.pd_msg = f"No se ha podido generar: {exc}"
+                ss.pop("pd_docx", None)
+        if ss.get("pd_msg"):
+            st.error(ss.pd_msg)
+        _m = ss.proy_materia
+        _nom = re.sub(r"[^\w]+", "_", f"{_m['nombre']}_{_m['curso']}").strip("_")
+        db1, db2, _db3 = st.columns([1.5, 1.5, 3])
+        if ss.get("pd_docx"):
+            db1.download_button(
+                "Descargar programación (Word)", data=ss.pd_docx,
+                file_name=f"programacion_didactica_{_nom}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="pd_dl",
+            )
+        db2.download_button(
+            "Descargar la plantilla por defecto", data=plantilla_por_defecto(),
+            file_name="programacion_didactica_template.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key="pd_tpl_dl",
+            help="Para cambiarle la portada, los estilos o el orden de los capítulos en Word "
+                 "y subirla después como plantilla propia. Hay que respetar las etiquetas {{ … }}.",
+        )
+
+        _pend = red_def.pendientes(ss.red, red_def.etapa_app(_m))
+        if _pend:
+            _por_cap: dict[str, list[str]] = {}
+            for _cap_n, _etq in _pend:
+                _por_cap.setdefault(_cap_n, []).append(_etq)
+            st.warning(
+                "Textos sin rellenar en Redacción (no saldrán en el documento):\n\n"
+                + "\n".join(f"- **{c}**: {', '.join(e)}" for c, e in _por_cap.items())
+            )
+        else:
+            st.success("Todos los textos de Redacción están rellenos.")
