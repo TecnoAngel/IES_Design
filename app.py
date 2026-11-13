@@ -1376,7 +1376,12 @@ def _ajuste_pesos_ipf(il_rows, ce_list, ce_ced, ce_p, sits):
         st.markdown('<div class="mini-label">Distribución de pesos por instrumento (deben sumar 100 %)</div>', unsafe_allow_html=True)
         # AgGrid y no st.data_editor: en algunos navegadores las tablas nativas
         # de Streamlit (dibujadas en <canvas>) salían en negro.
-        _ogb = GridOptionsBuilder.from_dataframe(ss.ipf_obj_df)
+        # OJO: st_aggrid añade al DataFrame que recibe la columna interna
+        # «::auto_unique_id::». Como este se guarda en la sesión, a la rejilla
+        # se le da una copia (si no, a la siguiente ejecución la columna
+        # aparecía como una más, con 0, 1, 2…).
+        _obj_df = ss.ipf_obj_df.drop(columns="::auto_unique_id::", errors="ignore").copy()
+        _ogb = GridOptionsBuilder.from_dataframe(_obj_df)
         _ogb.configure_default_column(editable=False, resizable=True, sortable=False, filter=False)
         _ogb.configure_column("Instrumento", flex=1, minWidth=180)
         _ogb.configure_column(
@@ -1389,7 +1394,7 @@ def _ajuste_pesos_ipf(il_rows, ce_list, ce_ced, ce_p, sits):
         )
         _ogb.configure_grid_options(rowHeight=30)
         _og = AgGrid(
-            ss.ipf_obj_df, gridOptions=_ogb.build(), update_on=[("cellValueChanged", 300)],
+            _obj_df, gridOptions=_ogb.build(), update_on=[("cellValueChanged", 300)],
             allow_unsafe_jscode=True, fit_columns_on_grid_load=False, custom_css=AGGRID_GRID_CSS,
             height=56 + 30 * len(ss.ipf_obj_df), theme="balham",
             key="ipf_obj_grid_" + "|".join(ies),
@@ -2746,10 +2751,10 @@ elif page in ("aula_datos", "aula_sa", "doc_aula"):
                 ss.pa_sa_edits[_dsa_sel] = _cur
 
         # ── PESTAÑA: Actividades por situación de aprendizaje. Todo lo que se
-        # ve (los tres cuadros) está en ui_actividades.py.
+        # ve (los tres cuadros) está en ui/actividades.py.
         with _tab_pact:
             if _tab_pact.open:
-                import ui_actividades
+                from ui import actividades as ui_actividades
 
                 sa_sel = _sel_sa("pa_sa_sel")
                 ui_actividades.pintar(sa_sel, _il_state, _ce_p)
@@ -2926,7 +2931,7 @@ elif page == "doc_otros":
                             ), use_container_width=True)
 
 # PÁGINA: PROGRAMACIÓN DIDÁCTICA › REDACCIÓN. Una pestaña por capítulo de la
-# programación didáctica; todo lo que se ve está en ui_redaccion.py y qué
+# programación didáctica; todo lo que se ve está en ui/redaccion.py y qué
 # lleva cada capítulo, en tools/redaccion.py.
 elif page == "Redacción":
     st.markdown(
@@ -2940,7 +2945,7 @@ elif page == "Redacción":
     if not _hay_proyecto():
         st.info("Abre un proyecto o crea uno nuevo en la barra de arriba para empezar.")
     else:
-        import ui_redaccion
+        from ui import redaccion as ui_redaccion
 
         ui_redaccion.pintar(
             _pestanas("tabs_redaccion", [c["pestana"] for c in red_def.CAPITULOS]),

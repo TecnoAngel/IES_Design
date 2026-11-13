@@ -6,7 +6,7 @@ por el centro (más resumida: tablas de resumen y anexos).
 
 Aquí solo está la **definición** (``CAPITULOS``) y los **cálculos** de lo que se
 genera solo (``tabla_auto``, ``grafica_png``). La pantalla está en
-``ui_redaccion.py`` y el Word en ``tools/programacion_didactica.py``.
+``ui/redaccion.py`` y el Word en ``tools/programacion_didactica.py``.
 
 Cada capítulo es una pestaña y una lista de elementos, en el orden en que
 salen en pantalla y en el Word. Hay cuatro tipos de elemento:

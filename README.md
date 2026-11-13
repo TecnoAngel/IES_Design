@@ -79,7 +79,7 @@ en verde si ya están asignados a algún indicador y en rojo si no.
 ### Programación de aula
 
 - **Datos generales** del grupo.
-- **Actividades por situación de aprendizaje** (código en `ui_actividades.py`):
+- **Actividades por situación de aprendizaje** (código en `ui/actividades.py`):
   se elige la SA y aparecen tres cuadros. En el primero, una fila por actividad:
   nombre, indicador de logro que evalúa (pueden ser varios con el mismo
   instrumento), instrumento y su valor sobre la programación y sobre la SA; una

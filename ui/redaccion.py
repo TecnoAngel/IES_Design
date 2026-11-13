@@ -13,7 +13,7 @@ Aquí está cómo se pinta cada tipo de elemento:
            ├─ _auto()            tabla que se genera sola (casilla «aparece»)
            └─ _grafica()         gráfica que se genera sola (casilla «aparece»)
 
-Cómo funciona la edición (el mismo patrón que en ``ui_actividades.py``):
+Cómo funciona la edición (el mismo patrón que en ``ui/actividades.py``):
 
 1. Todo vive en ``st.session_state.red``:
    ``{"textos": {clave: texto}, "tablas": {clave: [fila]}, "opciones": {clave: bool}}``.
