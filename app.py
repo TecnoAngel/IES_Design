@@ -150,27 +150,37 @@ st.markdown(
         font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em; opacity: 0.9;
     }
     .side-brand .t { font-size: 1.35rem; font-weight: 700; line-height: 1.15; }
-    .st-key-active_page [role="radiogroup"] { gap: 0.35rem; width: 100%; }
-    .st-key-active_page [role="radiogroup"] > label {
-        width: 100%;
-        margin: 0;
-        padding: 0.6rem 0.85rem;
-        border-radius: 10px;
-        border: 1px solid transparent;
-        border-left: 5px solid transparent;
-        cursor: pointer;
-        transition: background-color 0.12s ease;
+    /* Menú lateral: grupos numerados (.nav-grupo) y, dentro, una entrada por
+       página (botones dentro del contenedor «menu»; la activa es la primaria). */
+    .st-key-menu { gap: 0.15rem !important; }
+    .st-key-menu [data-testid="stMarkdownContainer"] { margin-bottom: 0; }
+    .nav-grupo {
+        display: flex; align-items: center; gap: 0.5rem; margin: 0.9rem 0 0.2rem 0;
+        font-size: 0.74rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.07em; color: #5b524b;
     }
-    .st-key-active_page [role="radiogroup"] > label > div:first-child { display: none; }
-    .st-key-active_page [role="radiogroup"] > label p { font-size: 1rem; font-weight: 600; }
-    .st-key-active_page [role="radiogroup"] > label:hover { background: #f3e6d3; }
-    .st-key-active_page [role="radiogroup"] > label:has(input:checked) {
-        background: #ffffff;
-        border-color: var(--jcyl-line);
-        border-left-color: var(--jcyl-red);
-        box-shadow: 0 2px 8px rgba(166,24,46,0.10);
+    .nav-grupo .n {
+        flex: none; width: 1.3rem; height: 1.3rem; border-radius: 50%;
+        display: inline-flex; align-items: center; justify-content: center;
+        background: var(--jcyl-red); color: #fff; font-size: 0.74rem; letter-spacing: 0;
     }
-    .st-key-active_page [role="radiogroup"] > label:has(input:checked) p { color: var(--jcyl-red); }
+    .st-key-menu [data-testid="stButton"] button[kind="primary"],
+    .st-key-menu [data-testid="stButton"] button[kind="secondary"] {
+        width: 100% !important; justify-content: flex-start; text-align: left;
+        min-height: 2.1rem; padding: 0.3rem 0.7rem 0.3rem 1.05rem; border-radius: 8px;
+        border: 1px solid transparent; border-left: 4px solid transparent;
+        background: transparent !important; box-shadow: none;
+    }
+    /* (el texto, a la izquierda: Streamlit lo centra en varios niveles) */
+    .st-key-menu [data-testid="stButton"] button * { justify-content: flex-start; text-align: left; }
+    .st-key-menu [data-testid="stButton"] button > div { width: 100%; }
+    .st-key-menu [data-testid="stButton"] button p { font-size: 0.95rem; font-weight: 600; color: #2b2622; }
+    .st-key-menu [data-testid="stButton"] button[kind="secondary"]:hover { background: #f3e6d3 !important; }
+    .st-key-menu [data-testid="stButton"] button[kind="primary"] {
+        background: #ffffff !important; border-color: var(--jcyl-line);
+        border-left-color: var(--jcyl-red); box-shadow: 0 2px 8px rgba(166,24,46,0.10);
+    }
+    .st-key-menu [data-testid="stButton"] button[kind="primary"] p { color: var(--jcyl-red); }
     /* Pestañas de cada página (Situaciones, Criterios, …). */
     /* Cada pestaña es una "pastilla" separada; la activa, rellena en rojo. */
     [data-testid="stTabs"] [role="tablist"] {
@@ -414,19 +424,56 @@ components.html(
 # Navegación principal en la barra lateral (widget atado a session_state, así
 # que la página activa se conserva entre reruns). Dentro de cada página, los
 # bloques van en st.tabs con key + on_change="rerun" (también persistentes).
-PAGES = ["Diseño de la programación", "Contenidos", "Programación de aula", "Información a familias"]
+# MENÚ: grupos y, dentro de cada uno, sus páginas como (id, etiqueta). El id
+# es lo que se guarda en `active_page` y lo que miran los `if page == …` de
+# abajo; para añadir una página basta una línea aquí y su bloque abajo.
+NAV = [
+    ("Programación didáctica", [
+        ("Diseño de la programación", "Diseño de la programación"),
+        ("Contenidos", "Contenidos"),
+        ("Redacción", "Redacción"),
+    ]),
+    ("Programación de aula", [
+        ("aula_datos", "Datos generales"),
+        ("aula_sa", "Situaciones de aprendizaje"),
+    ]),
+    ("Generación de documentos", [
+        ("doc_didactica", "Programación didáctica"),
+        ("doc_aula", "Programación de aula"),
+        ("doc_otros", "Otros informes"),
+    ]),
+]
+# Páginas del menú anterior (una sesión abierta antes de un despliegue).
+_PAG_ANTES = {"Programación de aula": "aula_datos", "Información a familias": "doc_otros"}
+_pag_ids = [i for _g, _its in NAV for i, _e in _its]
+_pag = st.session_state.get("active_page")
+_pag = _PAG_ANTES.get(_pag, _pag)
+st.session_state.active_page = _pag if _pag in _pag_ids else _pag_ids[0]
+
+
+def _ir_a(pagina: str) -> None:
+    st.session_state.active_page = pagina
+
+
 with st.sidebar:
     st.markdown(
         '<div class="side-brand"><div class="k">Programación didáctica</div>'
         '<div class="t">IES Diseño</div></div>',
         unsafe_allow_html=True,
     )
-    page = st.radio(
-        "Navegación",
-        PAGES,
-        key="active_page",
-        label_visibility="collapsed",
-    )
+    with st.container(key="menu"):
+        for _gi, (_grupo, _items) in enumerate(NAV):
+            st.markdown(
+                f'<div class="nav-grupo"><span class="n">{_gi + 1}</span>{_grupo}</div>',
+                unsafe_allow_html=True,
+            )
+            for _ii, (_pid, _etq) in enumerate(_items):
+                st.button(
+                    _etq, key=f"nav_{_gi}_{_ii}", use_container_width=True,
+                    type="primary" if st.session_state.active_page == _pid else "secondary",
+                    on_click=_ir_a, args=(_pid,),
+                )
+page = st.session_state.active_page
 
 # ── Currículo común (curriculo.db, se descarga de GitHub) y proyecto del
 #    docente (.sqlite): barra global para abrir / crear / guardar desde
@@ -978,6 +1025,21 @@ def _pestanas(key, titulos):
 
     default = ss.get(last) if ss.get(last) in titulos else None
     return st.tabs(titulos, key=key, default=default, on_change=_recordar)
+
+
+class _Zona:
+    """Hace de pestaña para un apartado que ya no va en pestañas porque tiene
+    su entrada en el menú: `with zona:` no hace nada y `.open` dice si toca
+    pintarlo en la página actual."""
+
+    def __init__(self, abierta: bool = False):
+        self.open = abierta
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
 
 
 def _calc_sesiones_por_evaluacion():
@@ -2430,13 +2492,21 @@ elif page == "Contenidos":
             if _tab_ctr.open:
                 _render(_el["transversales"], "num", "desc", "Nº", _ct_used, "ec_grid_ct")
 
-# PÁGINA: PROGRAMACIÓN DE AULA
-elif page == "Programación de aula":
+# PÁGINAS: PROGRAMACIÓN DE AULA (Datos generales · Situaciones de aprendizaje)
+# y GENERACIÓN DE DOCUMENTOS › Programación de aula. Comparten la preparación.
+elif page in ("aula_datos", "aula_sa", "doc_aula"):
+    _cab_t, _cab_p = {
+        "aula_datos": ("Programación de aula · Datos generales",
+                       "Datos del grupo, sus características y la evaluación."),
+        "aula_sa": ("Programación de aula · Situaciones de aprendizaje",
+                    "Descripción de cada situación de aprendizaje para la programación "
+                    "de aula y sus actividades."),
+        "doc_aula": ("Generar la programación de aula",
+                     "Documento Word con la plantilla por defecto o con una tuya. Su "
+                     "contenido se rellena en «Programación de aula»."),
+    }[page]
     st.markdown(
-        '<div class="panel-card"><h3>Programación de aula</h3>'
-        "<p>Datos generales del grupo, campos de la programación de aula de cada "
-        "situación de aprendizaje y sus actividades. Genera el documento Word con la "
-        "plantilla por defecto o con una tuya.</p></div>",
+        f'<div class="panel-card"><h3>{_cab_t}</h3><p>{_cab_p}</p></div>',
         unsafe_allow_html=True,
     )
 
@@ -2483,36 +2553,41 @@ elif page == "Programación de aula":
         def _hum(k):
             return _ETIQ.get(k) or k.replace("_", " ").strip().capitalize()
 
-        # ── Generar programación de aula
-        gc1, gc2 = st.columns([2.2, 1.6], vertical_alignment="bottom")
-        _tpl = gc1.file_uploader("Plantilla Word (opcional)", type=["docx"], key="pa_tpl")
-        if gc2.button("Generar programación de aula", use_container_width=True, type="primary", key="pa_gen"):
-            from tools.consistencia import revisar
+        if page == "doc_aula":
+            # ── Generar programación de aula
+            gc1, gc2 = st.columns([2.2, 1.6], vertical_alignment="bottom")
+            _tpl = gc1.file_uploader("Plantilla Word (opcional)", type=["docx"], key="pa_tpl")
+            if gc2.button("Generar programación de aula", use_container_width=True, type="primary", key="pa_gen"):
+                from tools.consistencia import revisar
 
-            _iss = revisar(*_estado_coherencia())
-            if _iss:
-                _dlg_coherencia(_iss, contexto="generar")
-            else:
-                try:
-                    ss.pa_docx = _generar_docx()
-                    ss.pa_gen_msg = ""
-                except Exception as exc:
-                    ss.pa_gen_msg = f"No se ha podido generar: {exc}"
-                    ss.pop("pa_docx", None)
-        if ss.get("pa_gen_msg"):
-            st.error(ss.pa_gen_msg)
-        if ss.get("pa_docx"):
-            st.download_button(
-                "Descargar programación (Word)", data=ss.pa_docx,
-                file_name="programacion_aula.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                _iss = revisar(*_estado_coherencia())
+                if _iss:
+                    _dlg_coherencia(_iss, contexto="generar")
+                else:
+                    try:
+                        ss.pa_docx = _generar_docx()
+                        ss.pa_gen_msg = ""
+                    except Exception as exc:
+                        ss.pa_gen_msg = f"No se ha podido generar: {exc}"
+                        ss.pop("pa_docx", None)
+            if ss.get("pa_gen_msg"):
+                st.error(ss.pa_gen_msg)
+            if ss.get("pa_docx"):
+                st.download_button(
+                    "Descargar programación (Word)", data=ss.pa_docx,
+                    file_name="programacion_aula.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+
+        # Datos generales va solo en su página; Situaciones de aprendizaje, en
+        # dos pestañas. (`_Zona` = apartado sin pestaña; ver su definición.)
+        _tab_pad = _tab_pasa = _tab_pact = _Zona()
+        if page == "aula_datos":
+            _tab_pad = _Zona(True)
+        elif page == "aula_sa":
+            _tab_pasa, _tab_pact = _pestanas(
+                "tabs_aula", ["Descripción SA", "Actividades por situación de aprendizaje"]
             )
-        st.space("small")
-
-        _tab_pad, _tab_pasa, _tab_pact = _pestanas(
-            "tabs_aula", ["Datos generales", "Descripción SA",
-                          "Actividades por situación de aprendizaje"]
-        )
 
         _lbl = {sa: f"SA {sa}: {d}" for sa, d in _sa_opts}
         _nums_sa = [sa for sa, _ in _sa_opts]
@@ -2614,10 +2689,11 @@ elif page == "Programación de aula":
                 sa_sel = _sel_sa("pa_sa_sel")
                 ui_actividades.pintar(sa_sel, _il_state, _ce_p)
 
-# PÁGINA: INFORMACIÓN A FAMILIAS
-elif page == "Información a familias":
+# PÁGINA: GENERACIÓN DE DOCUMENTOS › OTROS INFORMES (por ahora, solo el de
+# información a familias; los que vengan, con un selector de informe arriba).
+elif page == "doc_otros":
     st.markdown(
-        '<div class="panel-card"><h3>Información a familias</h3>'
+        '<div class="panel-card"><h3>Otros informes · Información a familias</h3>'
         "<p>Documento para informar al alumnado y a las familias sobre la evaluación "
         "(ORDEN EDU/424/2024, art. 12 · ORDEN EDU/425/2024, art. 10). Lo que no sale "
         "de la programación se escribe aquí y se guarda en el proyecto.</p></div>",
@@ -2784,3 +2860,18 @@ elif page == "Información a familias":
                                 titulo=f"Instrumentos · SA {_s['numero']}", leyenda="Instrumento",
                             ), use_container_width=True)
 
+# PÁGINAS POR HACER
+elif page == "Redacción":
+    st.markdown(
+        '<div class="panel-card"><h3>Redacción</h3>'
+        "<p>Textos de la programación didáctica.</p></div>",
+        unsafe_allow_html=True,
+    )
+    st.info("Apartado por hacer.")
+elif page == "doc_didactica":
+    st.markdown(
+        '<div class="panel-card"><h3>Generar la programación didáctica</h3>'
+        "<p>Documento Word de la programación didáctica, con su plantilla.</p></div>",
+        unsafe_allow_html=True,
+    )
+    st.info("Apartado por hacer.")
