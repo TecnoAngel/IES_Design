@@ -65,8 +65,11 @@ def build_pie_png_simple(
     titulo: str,
     leyenda: str = "",
     dpi: int = 150,
+    grises: bool = False,
 ) -> bytes:
-    """Gráfico de sectores genérico (etiquetas + valores) con leyenda al lado."""
+    """Gráfico de sectores genérico (etiquetas + valores) con leyenda al lado.
+    ``grises``: en blanco y negro (tonos de gris y tramas para distinguir los
+    sectores), para documentos que se imprimen sin color."""
     pares = [(l, v) for l, v in zip(labels, values) if v]
     fig, ax = plt.subplots(figsize=(8.0, 4.6))
     if not pares:
@@ -74,17 +77,28 @@ def build_pie_png_simple(
         ax.axis("off")
     else:
         ls, vs = zip(*pares)
-        colores = [_color_hex(i) for i in range(len(ls))]
+        if grises:
+            tonos = ["#f2f2f2", "#bfbfbf", "#8c8c8c", "#d9d9d9", "#a6a6a6"]
+            tramas = ["", "///", "...", "xxx", "\\\\\\", "++", "ooo", "---"]
+            colores = [tonos[i % len(tonos)] for i in range(len(ls))]
+        else:
+            colores = [_color_hex(i) for i in range(len(ls))]
         wedges, _t, autos = ax.pie(
             vs, colors=colores, autopct=lambda p: f"{p:.1f}%", pctdistance=0.78,
             startangle=90, counterclock=False,
-            wedgeprops={"linewidth": 1, "edgecolor": "white"},
+            wedgeprops={"linewidth": 0.8 if grises else 1, "edgecolor": "black" if grises else "white"},
         )
+        if grises:
+            for i, w in enumerate(wedges):
+                w.set_hatch(tramas[i % len(tramas)])
         for t in autos:
             t.set_fontsize(8)
-            t.set_color("#1a1a1a")
+            t.set_color("#000000" if grises else "#1a1a1a")
+            if grises:
+                t.set_bbox({"facecolor": "white", "edgecolor": "none", "pad": 0.8, "alpha": 0.85})
         ax.axis("equal")
-        ax.set_title(titulo, fontsize=12, fontweight="bold", color=JCYL_RED, pad=16)
+        ax.set_title(titulo, fontsize=12, fontweight="bold",
+                     color="black" if grises else JCYL_RED, pad=16)
         ax.legend(
             wedges, ls, title=leyenda or None, loc="center left",
             bbox_to_anchor=(1.0, 0.5), fontsize=8, title_fontsize=9, frameon=False,

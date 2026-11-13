@@ -813,6 +813,102 @@ def _nombre_sin_sello(nombre: str) -> str:
     return re.sub(r"^(?:\d{8}_\d{4}_)+", "", nombre)
 
 
+# JavaScript del botón «Guardar proyecto» (ver _guardar_archivo_html).
+#
+# El guardado NO se hace dentro del iframe del botón sino en una función que se
+# deja en la página (window.parent.__iesGuardar), por esto: si el docente pulsa
+# Guardar con el cursor todavía dentro de un campo de texto, Streamlit recibe
+# ese texto justo entonces, vuelve a ejecutar la app y cambia este iframe por
+# uno nuevo con el proyecto actualizado. El iframe viejo (y su JavaScript)
+# desaparece a mitad del clic y guardaría el proyecto de antes. La función de
+# la página sobrevive al cambio: espera a que Streamlit termine y guarda lo que
+# haya publicado el iframe más reciente en window.parent.__iesDatos.
+_JS_GUARDAR = r"""
+(function () {
+    const pagina = window.parent;
+    pagina.__iesDatos = __DATOS__;      // el proyecto más reciente
+    const btn = document.getElementById("iesSaveBtn");
+
+    pagina.__iesGuardar = new pagina.Function(`
+        const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
+        const conTiempo = (promesa, ms) => Promise.race([
+            promesa, new Promise((_, rej) => setTimeout(() => rej(new Error("tiempo agotado")), ms)),
+        ]);
+        // El mensaje se escribe en el iframe del botón que haya en ese momento.
+        const decir = (texto, color) => {
+            const f = document.querySelector(".st-key-proybar iframe");
+            const m = f && f.contentDocument && f.contentDocument.getElementById("iesSaveMsg");
+            if (m) { m.textContent = texto; m.title = texto; m.style.color = color || "#5b524b"; }
+        };
+        const ejecutando = () => {
+            const app = document.querySelector('[data-testid="stApp"]');
+            return !!app && app.getAttribute("data-test-script-state") === "running";
+        };
+        return (async () => {
+            if (window.__iesGuardando) return;
+            window.__iesGuardando = true;
+            try {
+                // 1. Dar tiempo a que llegue a Streamlit lo último tecleado y
+                //    esperar a que termine de recalcular (máx. ~4 s: el permiso
+                //    del navegador para abrir «Guardar como» caduca a los 5 s).
+                const t0 = Date.now();
+                await pausa(300);
+                let hubo = false;
+                while (Date.now() - t0 < 4000 && ejecutando()) { hubo = true; await pausa(80); }
+                if (hubo) await pausa(350);   // que el botón nuevo publique sus datos
+
+                // 2. Guardar lo más reciente.
+                const datos = window.__iesDatos;
+                const bin = atob(datos.b64);
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                // Sello AAAAMMDD_HHMM con la hora real del clic.
+                const d = new Date();
+                const pad = (n) => String(n).padStart(2, "0");
+                const fname = "" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate())
+                    + "_" + pad(d.getHours()) + pad(d.getMinutes()) + "_" + datos.base + datos.ext;
+
+                const descargar = () => {
+                    const url = URL.createObjectURL(new Blob([bytes], {type: datos.mime}));
+                    const a = document.createElement("a");
+                    a.href = url; a.download = fname;
+                    document.body.appendChild(a); a.click(); a.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 4000);
+                    decir("Descargado como " + fname + ".", "#2e7d32");
+                };
+                if ("showSaveFilePicker" in window) {
+                    // Chrome / Edge: elige dónde, puede sobrescribir el original.
+                    let handle;
+                    try {
+                        handle = await window.showSaveFilePicker({
+                            suggestedName: fname,
+                            types: [{description: datos.desc, accept: {[datos.mime]: [datos.ext]}}],
+                        });
+                    } catch (err) {
+                        if (err && err.name === "AbortError") { decir(""); return; }
+                        descargar();   // sin permiso para el selector: descarga normal
+                        return;
+                    }
+                    const writable = await conTiempo(handle.createWritable(), 6000);
+                    await conTiempo(writable.write(bytes), 10000);
+                    await conTiempo(writable.close(), 6000);
+                    decir("Guardado en " + handle.name + ".", "#2e7d32");
+                } else {
+                    descargar();       // Firefox / Safari
+                }
+            } catch (err) {
+                decir("No se ha podido guardar: " + ((err && err.message) || err), "#c62828");
+            } finally {
+                window.__iesGuardando = false;
+            }
+        })();
+    `);
+
+    btn.addEventListener("click", () => { pagina.__iesGuardar(); });
+})();
+"""
+
+
 def _guardar_archivo_html(
     data: bytes, base: str, *, ext: str = ".sqlite", etiqueta: str = "Guardar proyecto",
     descripcion: str = "Proyecto de IES Diseño", mime: str = "application/vnd.sqlite3",
@@ -832,6 +928,10 @@ def _guardar_archivo_html(
     límite por si acaso; el propio diálogo de elegir archivo no (ahí esperar a
     que decidas es normal, no un cuelgue).
 
+    El guardado en sí lo hace una función que se deja en la página, no el
+    iframe del botón: así se guarda también lo que se acaba de teclear en un
+    campo del que aún no se ha salido (ver ``_JS_GUARDAR``).
+
     El botón se pinta una sola vez (mientras no cambien los datos) y luego se
     puede pulsar varias veces sin que Streamlit vuelva a ejecutar Python —por
     eso el sello de fecha/hora del NOMBRE se calcula aquí, en JS, en el propio
@@ -847,6 +947,7 @@ def _guardar_archivo_html(
         "b64": base64.b64encode(data).decode("ascii"), "base": base, "ext": ext,
         "mime": mime, "desc": descripcion,
     })
+    js = _JS_GUARDAR.replace("__DATOS__", payload)
     components.html(
         f"""
         <style>
@@ -866,81 +967,7 @@ def _guardar_archivo_html(
         </style>
         <button id="iesSaveBtn" class="ies-save-btn">{html.escape(etiqueta)}</button>
         <div id="iesSaveMsg" class="ies-save-msg"></div>
-        <script>
-        (function () {{
-            const datos = {payload};
-            const btn = document.getElementById("iesSaveBtn");
-            const msg = document.getElementById("iesSaveMsg");
-
-            function conTiempo(promesa, ms) {{
-                return Promise.race([
-                    promesa,
-                    new Promise((_, rej) => setTimeout(() => rej(new Error("tiempo agotado")), ms)),
-                ]);
-            }}
-
-            function nombreConSello(base) {{
-                // Sello AAAAMMDD_HHMM con la hora real del clic (no la de
-                // cuando Python generó el archivo), para que cada guardado
-                // proponga un nombre distinto aunque los datos no cambien.
-                const d = new Date();
-                const pad = (n) => String(n).padStart(2, "0");
-                const sello = "" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate())
-                    + "_" + pad(d.getHours()) + pad(d.getMinutes());
-                return sello + "_" + base + datos.ext;
-            }}
-
-            btn.addEventListener("click", async () => {{
-                btn.disabled = true;
-                msg.textContent = "";
-                try {{
-                    const bin = atob(datos.b64);
-                    const bytes = new Uint8Array(bin.length);
-                    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-                    const fname = nombreConSello(datos.base);
-
-                    if ("showSaveFilePicker" in window) {{
-                        // Chrome / Edge: elige dónde, puede sobrescribir el original.
-                        const handle = await window.showSaveFilePicker({{
-                            suggestedName: fname,
-                            types: [{{
-                                description: datos.desc,
-                                accept: {{[datos.mime]: [datos.ext]}},
-                            }}],
-                        }});
-                        const writable = await conTiempo(handle.createWritable(), 6000);
-                        await conTiempo(writable.write(bytes), 10000);
-                        await conTiempo(writable.close(), 6000);
-                        msg.textContent = "Guardado en " + handle.name + ".";
-                        msg.style.color = "#2e7d32";
-                    }} else {{
-                        // Firefox / Safari: no hay selector, descarga normal.
-                        const blob = new Blob([bytes], {{type: datos.mime}});
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = fname;
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
-                        setTimeout(() => URL.revokeObjectURL(url), 4000);
-                        msg.textContent = "Descargado como " + fname + ".";
-                        msg.style.color = "#2e7d32";
-                    }}
-                }} catch (err) {{
-                    if (err && err.name !== "AbortError") {{
-                        msg.textContent = "No se ha podido guardar: " + (err.message || err);
-                        msg.style.color = "#c62828";
-                    }} else {{
-                        msg.textContent = "";
-                    }}
-                }} finally {{
-                    btn.disabled = false;
-                    msg.title = msg.textContent;
-                }}
-            }});
-        }})();
-        </script>
+        <script>{js}</script>
         """,
         height=height,
     )

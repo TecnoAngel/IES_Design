@@ -1041,8 +1041,9 @@ def tabla_auto(clave: str, datos: dict) -> tuple[list[str], list[list[str]]]:
     return _TABLAS[clave](datos)
 
 
-def grafica_png(clave: str, datos: dict) -> bytes | None:
-    """PNG de una gráfica automática (None si aún no hay datos)."""
+def grafica_png(clave: str, datos: dict, *, grises: bool = True) -> bytes | None:
+    """PNG de una gráfica automática (None si aún no hay datos). Por defecto en
+    blanco y negro, como el resto del documento."""
     from tools.situaciones_informe import build_pie_png_simple
 
     if clave == "k_grafica_instrumentos":
@@ -1051,7 +1052,7 @@ def grafica_png(clave: str, datos: dict) -> bytes | None:
             return None
         return build_pie_png_simple([k for k, _v in ins], [v for _k, v in ins],
                                     titulo="Peso por instrumento de evaluación",
-                                    leyenda="Instrumento")
+                                    leyenda="Instrumento", grises=grises)
     if clave == "m_grafica_horas":
         sits = [s for s in _orden_sa(datos) if _horas(s)]
         if not sits:
@@ -1059,5 +1060,6 @@ def grafica_png(clave: str, datos: dict) -> bytes | None:
         return build_pie_png_simple(
             [f"SA {_num_sa(s['SA'])}: {_s(s.get('DSA'))}" for s in sits], [_horas(s) for s in sits],
             titulo="Reparto de horas por situación de aprendizaje", leyenda="Situación",
+            grises=grises,
         )
     raise KeyError(clave)

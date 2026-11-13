@@ -26,8 +26,8 @@ from docx.shared import Cm, Pt, RGBColor
 
 from tools.redaccion import CAPITULOS
 
-ROJO = RGBColor(0xA6, 0x18, 0x2E)
-TINTA = RGBColor(0x22, 0x1C, 0x18)
+# Todo en blanco y negro (petición del usuario, 2026-11-14).
+NEGRO = RGBColor(0x00, 0x00, 0x00)
 
 # Capítulos que van en el cuerpo (los demás, como anexos).
 EN_CUERPO = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m"]
@@ -38,15 +38,19 @@ def _estilos(doc: Document) -> None:
     normal = doc.styles["Normal"]
     normal.font.name = "Calibri"
     normal.font.size = Pt(11)
-    normal.font.color.rgb = TINTA
+    normal.font.color.rgb = NEGRO
     normal.paragraph_format.space_after = Pt(6)
     for nombre, tam in (("Title", 26), ("Heading 1", 14), ("Heading 2", 12)):
         st = doc.styles[nombre]
         st.font.name = "Calibri"
         st.font.size = Pt(tam)
         st.font.bold = True
-        st.font.color.rgb = ROJO
+        st.font.color.rgb = NEGRO
         st.paragraph_format.keep_with_next = True
+    # El estilo «Título» de Word trae una línea azul debajo: fuera.
+    ppr = doc.styles["Title"].element.pPr
+    if ppr is not None and ppr.find(qn("w:pBdr")) is not None:
+        ppr.remove(ppr.find(qn("w:pBdr")))
     doc.styles["Heading 1"].paragraph_format.space_before = Pt(18)
     doc.styles["Heading 1"].paragraph_format.space_after = Pt(8)
     for sec in doc.sections:
@@ -80,6 +84,35 @@ def _numero_de_pagina(doc: Document) -> None:
     p._p.append(campo)
 
 
+def _indice(doc: Document) -> None:
+    """Índice automático de Word (campo TOC con los títulos de nivel 1).
+
+    Word es quien calcula los números de página: el campo va marcado como
+    «pendiente de actualizar», así que al abrir el documento Word pregunta si
+    actualiza los campos (hay que decir que sí). También se actualiza a mano
+    con clic derecho sobre el índice › Actualizar campo."""
+    t = _p(doc, "Índice", bold=True, size=14)
+    t.paragraph_format.page_break_before = True
+    t.paragraph_format.space_after = Pt(10)
+    p = doc.add_paragraph()
+
+    def marca(tipo: str, **atributos) -> None:
+        el = OxmlElement("w:fldChar")
+        el.set(qn("w:fldCharType"), tipo)
+        for k, v in atributos.items():
+            el.set(qn(f"w:{k}"), v)
+        p.add_run()._r.append(el)
+
+    marca("begin", dirty="true")
+    instr = OxmlElement("w:instrText")
+    instr.set(qn("xml:space"), "preserve")
+    instr.text = ' TOC \\o "1-1" \\h \\z \\u '
+    p.add_run()._r.append(instr)
+    marca("separate")
+    p.add_run("Para ver el índice: clic derecho aquí › Actualizar campo.")
+    marca("end")
+
+
 def build_document() -> Document:
     doc = Document()
     _estilos(doc)
@@ -89,7 +122,7 @@ def build_document() -> Document:
     _p(doc, antes=120)
     t = doc.add_paragraph("PROGRAMACIÓN DIDÁCTICA", style="Title")
     t.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    _p(doc, "{{ materia }}", bold=True, center=True, size=20, color=TINTA, antes=12)
+    _p(doc, "{{ materia }}", bold=True, center=True, size=20, antes=12)
     _p(doc, "{{ curso }}", bold=True, center=True, size=16)
     # (cada dato de la portada solo sale si está relleno)
     for dato, texto, tam, antes in (
@@ -101,6 +134,8 @@ def build_document() -> Document:
         _p(doc, f"{{%p if {dato} %}}")
         _p(doc, texto, center=True, size=tam, antes=antes)
         _p(doc, "{%p endif %}")
+
+    _indice(doc)
 
     # ── Capítulos a) … m)
     por_id = {c["id"]: c for c in CAPITULOS}

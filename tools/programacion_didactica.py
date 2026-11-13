@@ -32,7 +32,7 @@ from docx.shared import Cm, Pt, RGBColor
 from docxtpl import DocxTemplate
 
 from tools import redaccion as red
-from tools.info_familias import HEADER_FILL, _fijar_anchos, _fila
+from tools.info_familias import _fijar_anchos, _fila
 from tools.programacion_aula import _set_cell_background, _set_table_borders
 
 DEFAULT_TEMPLATE = (
@@ -41,9 +41,10 @@ DEFAULT_TEMPLATE = (
 _JINJA_ENV = jinja2.Environment(undefined=jinja2.ChainableUndefined)
 
 ANCHO_CM = 17.0          # ancho útil de la página (A4 con márgenes de 2 cm)
-BANDA_FILL = "FAF4EC"    # fondo de las filas de bloque / competencia
+# Todo en blanco y negro (petición del usuario, 2026-11-14): grises y letra negra.
+HEADER_FILL = "D9D9D9"   # fondo de la cabecera de las tablas
+BANDA_FILL = "F2F2F2"    # fondo de las filas de bloque / competencia
 SIN_COMPLETAR = "(pendiente de completar)"
-BLANCO = RGBColor(0xFF, 0xFF, 0xFF)
 
 # Anchos (cm) de las tablas automáticas. Las que no están aquí se reparten a
 # partes iguales.
@@ -147,7 +148,7 @@ def _tabla(sub, headers: list[str], rows: list[list[str]], widths: list[float] |
     t.autofit = False
     for i, h in enumerate(headers):
         c = t.rows[0].cells[i]
-        _celda(c, h.upper(), size=size, bold=True, center=True, color=BLANCO)
+        _celda(c, h.upper(), size=size, bold=True, center=True)
         _set_cell_background(c, HEADER_FILL)
     _fila(t.rows[0], cabecera=True)
     juntas = len(rows) <= 14
@@ -192,7 +193,7 @@ def _matriz(sub, headers: list[str], rows: list[list[str]]) -> None:
     cab._tr.get_or_add_trPr().append(alto)
     for i, h in enumerate(headers):
         c = cab.cells[i]
-        _celda(c, h, size=5.5, bold=True, center=True, color=BLANCO)
+        _celda(c, h, size=5.5, bold=True, center=True)
         _set_cell_background(c, HEADER_FILL)
         if i:
             d = OxmlElement("w:textDirection")
