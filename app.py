@@ -283,50 +283,60 @@ st.markdown(
        banda carmín, es la selección principal de la pestaña. */
     [class*="st-key-pasel_"] {
         background: linear-gradient(100deg, #a6182e 0%, #c1304c 100%);
-        border-radius: 12px; padding: 0.8rem 1.1rem 1rem; margin-bottom: 0.4rem;
-        box-shadow: 0 6px 18px rgba(166,24,46,0.22);
+        border-radius: 10px; padding: 0.55rem 0.9rem 0.75rem; margin-bottom: 0.2rem;
+        box-shadow: 0 3px 10px rgba(166,24,46,0.18);
     }
     [class*="st-key-pasel_"] label p {
-        color: #fff !important; font-size: 0.78rem !important; font-weight: 700 !important;
-        text-transform: uppercase; letter-spacing: 0.12em;
+        color: #fff !important; font-size: 0.74rem !important; font-weight: 700 !important;
+        text-transform: uppercase; letter-spacing: 0.1em;
     }
     [class*="st-key-pasel_"] [data-testid="stSelectbox"] [role="group"] {
-        background: #fff !important; border: 2px solid var(--jcyl-gold) !important;
-        border-radius: 10px !important; min-height: 3.2rem;
+        background: #fff !important; border: 1px solid var(--jcyl-gold) !important;
+        border-radius: 8px !important;
     }
     [class*="st-key-pasel_"] [data-testid="stSelectbox"] input {
-        font-size: 1.2rem !important; font-weight: 700 !important; color: var(--jcyl-ink) !important;
+        font-size: 1.05rem !important; font-weight: 700 !important; color: var(--jcyl-ink) !important;
         background: transparent !important;
     }
-    /* Botones «Generar…» a la altura de su cargador de plantilla. */
-    .st-key-pa_gen button, .st-key-fam_gen button { min-height: 4.25rem; font-size: 1rem; font-weight: 700; }
-    /* Vista en el cuaderno (iDoceo / Additio): columnas pastel por actividad. */
-    .cuad-wrap {
-        overflow-x: auto; background: #fff; border: 1px solid var(--jcyl-line);
-        border-radius: 16px; box-shadow: 0 6px 22px rgba(34,28,24,0.07);
-        margin: 0.4rem 0 1rem 0;
+    /* Botones de toda la app: del ancho de su texto (no estirados a toda la
+       columna, aunque lleven use_container_width), 36 px de alto y texto
+       legible en negrita media. No toca los botones de solo icono (tertiary). */
+    [data-testid="stButton"] button[kind="primary"], [data-testid="stButton"] button[kind="secondary"],
+    [data-testid="stDownloadButton"] button {
+        width: auto !important; min-height: 2.25rem; padding: 0.3rem 0.95rem; border-radius: 8px;
     }
-    table.cuad { border-collapse: separate; border-spacing: 0; min-width: 100%; margin: 0; font-size: 0.85rem; }
+    [data-testid="stButton"] button[kind="primary"] p, [data-testid="stButton"] button[kind="secondary"] p,
+    [data-testid="stDownloadButton"] button p { font-size: 0.92rem; font-weight: 600; }
+    /* Botones «Generar…»: centrados en altura con su cargador de plantilla. */
+    .st-key-pa_gen, .st-key-fam_gen { margin-bottom: 1rem; }
+    /* Vista en el cuaderno (iDoceo / Additio): columnas pastel por actividad.
+       La tabla mide lo que ocupan sus columnas (no se estira a todo el ancho). */
+    .cuad-wrap {
+        display: inline-block; max-width: 100%; vertical-align: top;
+        overflow-x: auto; background: #fff; border: 1px solid var(--jcyl-line);
+        border-radius: 8px; margin: 0.2rem 0 0.4rem 0;
+    }
+    table.cuad { border-collapse: separate; border-spacing: 0; width: auto; margin: 0; font-size: 0.85rem; }
     .cuad th, .cuad td { border: none !important; }
     .cuad .alum {
-        position: sticky; left: 0; z-index: 1; background: #fff; min-width: 9.5rem;
-        text-align: left; padding: 0 1rem; font-weight: 600; color: #5c524a;
+        position: sticky; left: 0; z-index: 1; background: #fff; width: 6.5rem; min-width: 6.5rem;
+        text-align: left; padding: 0 0.7rem; font-weight: 600; color: #5c524a; white-space: nowrap;
         box-shadow: inset -1px 0 0 var(--jcyl-line);
     }
     .cuad .alum.esq {
-        vertical-align: bottom; padding-bottom: 0.75rem; font-size: 0.75rem;
-        text-transform: uppercase; letter-spacing: 0.08em;
+        vertical-align: bottom; padding-bottom: 0.5rem; font-size: 0.72rem;
+        text-transform: uppercase; letter-spacing: 0.06em;
     }
     .cuad .act {
-        vertical-align: top; text-align: left; padding: 0; min-width: 11rem; max-width: 15rem;
+        vertical-align: top; text-align: left; padding: 0; width: 10.5rem; min-width: 10.5rem; max-width: 10.5rem;
         background: var(--bg); box-shadow: inset -1px 0 0 rgba(255,255,255,0.9);
     }
-    .cuad .cab { border-top: 5px solid var(--franja); padding: 0.7rem 0.85rem 0.55rem; }
-    .cuad .cod { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; color: var(--tinta); }
-    .cuad .tit { font-size: 0.95rem; font-weight: 700; line-height: 1.25; color: var(--jcyl-ink); margin: 0.15rem 0 0.2rem; }
+    .cuad .cab { border-top: 4px solid var(--franja); padding: 0.4rem 0.65rem 0.35rem; }
+    .cuad .cod { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; color: var(--tinta); }
+    .cuad .tit { font-size: 0.9rem; font-weight: 700; line-height: 1.25; color: var(--jcyl-ink); margin: 0.05rem 0 0.1rem; }
     .cuad .ie { font-size: 0.75rem; font-weight: 500; color: var(--tinta); }
     .cuad .ces {
-        display: flex; flex-wrap: wrap; gap: 0.3rem; padding: 0.55rem 0.85rem 0.7rem;
+        display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.35rem 0.65rem 0.45rem;
         border-top: 1px dashed rgba(34,28,24,0.14);
     }
     .cuad .ce {
@@ -337,7 +347,7 @@ st.markdown(
     .cuad .ce .x { font-weight: 500; color: var(--tinta); margin: 0 0.25rem; }
     .cuad .ce.warn { background: #fff1cc; color: #7a4d00; box-shadow: inset 0 0 0 1px #e3b04b; }
     .cuad .vacio { font-size: 0.78rem; color: #5c524a; font-style: italic; }
-    .cuad tbody .alum { height: 2.3rem; font-weight: 500; font-size: 0.82rem; border-top: 1px solid #f1e8dc !important; }
+    .cuad tbody .alum { height: 1.8rem; font-weight: 500; font-size: 0.8rem; border-top: 1px solid #f1e8dc !important; }
     .cuad td.cel {
         background: var(--soft); border-top: 1px solid #fff !important;
         box-shadow: inset -1px 0 0 #fff;
@@ -346,7 +356,6 @@ st.markdown(
         content: ""; display: block; width: 2.2rem; height: 0.42rem; margin: auto;
         border-radius: 4px; background: rgba(34,28,24,0.07);
     }
-    .cuad tbody tr:last-child .alum { border-bottom-left-radius: 16px; }
     </style>
     <div class="topbar">
         <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.18em; opacity: 0.9; margin-bottom: 0.25rem;">Programación didáctica</div>
@@ -735,14 +744,16 @@ def _guardar_archivo_html(
     components.html(
         f"""
         <style>
+        body {{ margin: 0; }}
         .ies-save-btn {{
-            width: 100%; padding: 0.5rem 1rem; border-radius: 8px; border: none;
-            background: #A6182E; color: #fff; font-weight: 600; font-size: 0.95rem;
+            /* margin-top: lo centra en altura con el cargador de la izquierda */
+            margin-top: 20px; min-height: 36px; padding: 0.3rem 1rem; border-radius: 8px; border: none;
+            background: #A6182E; color: #fff; font-weight: 600; font-size: 0.92rem;
             font-family: "Source Sans Pro", sans-serif; cursor: pointer;
         }}
         .ies-save-btn:hover:not(:disabled) {{ background: #8f1427; }}
         .ies-save-btn:disabled {{ background: #d8cec6; color: #7a6f66; cursor: not-allowed; }}
-        .ies-save-msg {{ font-size: 0.78rem; margin-top: 4px; text-align: center; min-height: 1em; }}
+        .ies-save-msg {{ font-size: 0.75rem; line-height: 1.2; margin-top: 2px; min-height: 1em; }}
         </style>
         <button id="iesSaveBtn" class="ies-save-btn">{html.escape(etiqueta)}</button>
         <div id="iesSaveMsg" class="ies-save-msg"></div>
@@ -1249,7 +1260,7 @@ def _ajuste_pesos_ipf(il_rows, ce_list, ce_ced, ce_p, sits):
             unsafe_allow_html=True,
         )
 
-    b1, b2, b3 = st.columns(3)
+    b1, b2, b3, _ = st.columns([1.1, 1, 1.1, 3.8])
     if b1.button("Cargar P y PIL", type="primary", use_container_width=True,
                  disabled=not suma_ok, key="ipf_all"):
         _ipf_cargar(pce, pil, ce_ced, ce_list)
@@ -1538,7 +1549,7 @@ if page == "Diseño de la programación":
                 "pulsa Borrar</div>",
                 unsafe_allow_html=True,
             )
-            sc1, sc2, sc3, _sc = st.columns([1.3, 1.5, 1.2, 3])
+            sc1, sc2, sc3, _sc = st.columns([0.9, 1.15, 0.85, 4.1])
             sa_add_click = sc1.button("Añadir fila", use_container_width=True, key="sa_add")
             sa_del_click = sc2.button("Borrar marcadas", use_container_width=True, key="sa_del")
             sa_upd_click = sc3.button("Actualizar", use_container_width=True, type="primary", key="sa_upd")
@@ -1902,7 +1913,7 @@ if page == "Diseño de la programación":
             # valor de la columna SA (texto) que pasa el filtro; None = todas
             _filtro_val = {"Todas": None, "Sin SA": ""}.get(filtro_sa, filtro_sa)
 
-            ac1, ac2, ac3, ac4, ac5 = st.columns([1.7, 0.8, 1.5, 1.6, 1.3])
+            ac1, ac2, ac3, ac4, ac5, _ = st.columns([1.7, 0.8, 1.15, 1.15, 0.9, 1.6])
             add_ce = ac1.selectbox("Criterio", ce_list, key="il_add_ce", label_visibility="collapsed")
             add_n = ac2.number_input("nº", 1, 20, 1, key="il_add_n", label_visibility="collapsed")
             add_click = ac3.button("Añadir al criterio", use_container_width=True)
@@ -2610,7 +2621,7 @@ elif page == "Información a familias":
             ss.pop("fam_docx", None)
 
         # ── Generar documento
-        fg1, fg2 = st.columns([2.2, 1.6])
+        fg1, fg2 = st.columns([2.2, 1.6], vertical_alignment="bottom")
         _fam_tpl = fg1.file_uploader("Plantilla Word (opcional)", type=["docx"], key="fam_tpl")
         if fg2.button("Generar documento para familias", use_container_width=True,
                       type="primary", key="fam_gen"):
