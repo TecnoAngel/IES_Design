@@ -40,24 +40,24 @@ CSS = """
 <style>
 /* Tabla que rellena el docente */
 [class*="st-key-redbox_tabla_"] {
-    background: #fff; border: 1px solid var(--jcyl-line); border-radius: 8px;
+    background: #fff; border: 1px solid var(--c-linea); border-radius: 8px;
     padding: 0.7rem 0.8rem 0.6rem 0.8rem; margin: 0.3rem 0 0.9rem 0;
-    box-shadow: inset 0 3px 0 var(--jcyl-red);
+    box-shadow: inset 0 3px 0 var(--c-azul);
 }
-/* Lo que se genera solo: tabla (crema) y gráfica (borde discontinuo) */
+/* Lo que se genera solo: tabla (plata) y gráfica (borde discontinuo) */
 [class*="st-key-redbox_auto_"], [class*="st-key-redbox_grafica_"] {
-    background: var(--jcyl-cream); border: 1px solid var(--jcyl-line); border-radius: 8px;
+    background: var(--c-plata); border: 1px solid var(--c-linea); border-radius: 8px;
     padding: 0.55rem 0.8rem 0.5rem 0.8rem; margin: 0.3rem 0 0.9rem 0;
 }
-[class*="st-key-redbox_grafica_"] { border: 2px dashed #c9b8a3; }
+[class*="st-key-redbox_grafica_"] { border: 2px dashed #AEBBCA; }
 [class*="st-key-redbox_"] [data-testid="stMarkdownContainer"] { margin-bottom: 0; }
-.red-tit { font-weight: 700; font-size: 0.98rem; color: #2b2622; }
-.red-ayuda { font-size: 0.85rem; color: #5c524a; margin-top: 0.1rem; }
+.red-tit { font-weight: 700; font-size: 0.98rem; color: #1B2633; }
+.red-ayuda { font-size: 0.85rem; color: #556170; margin-top: 0.1rem; }
 .red-col {
     font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
-    color: #5c524a;
+    color: #556170;
 }
-.red-guia { font-size: 0.92rem; color: #3d352f; }
+.red-guia { font-size: 0.92rem; color: #2B3745; }
 .red-vista { overflow-x: auto; }
 .red-vista table { font-size: 0.78rem; }
 /* Papelera de cada fila: discreta y a la altura de su campo */

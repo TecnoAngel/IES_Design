@@ -1,9 +1,9 @@
 # Tema claro fijo
-# (rojo carmín + oro), para que la interfaz se vea igual para todo el profesorado
+# (azul + plata + blanco), para que la interfaz se vea igual para todo el profesorado
 # y los desplegables de las tablas tengan contraste.
 [theme]
 base = "light"
-primaryColor = "#A6182E"
+primaryColor = "#0F5CA8"
 backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#FAF4EC"
-textColor = "#221C18"
+secondaryBackgroundColor = "#F3F6FA"
+textColor = "#17212E"

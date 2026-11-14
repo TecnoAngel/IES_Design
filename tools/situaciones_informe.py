@@ -98,7 +98,7 @@ def build_pie_png_simple(
                 t.set_bbox({"facecolor": "white", "edgecolor": "none", "pad": 0.8, "alpha": 0.85})
         ax.axis("equal")
         ax.set_title(titulo, fontsize=12, fontweight="bold",
-                     color="black" if grises else JCYL_RED, pad=16)
+                     color="black" if grises else COLOR_AZUL, pad=16)
         ax.legend(
             wedges, ls, title=leyenda or None, loc="center left",
             bbox_to_anchor=(1.0, 0.5), fontsize=8, title_fontsize=9, frameon=False,
@@ -136,7 +136,7 @@ def build_pie_png(shares: list[dict], *, dpi: int = 150) -> bytes:
             "Distribución de horas por situación de aprendizaje",
             fontsize=12,
             fontweight="bold",
-            color=JCYL_RED,
+            color=COLOR_AZUL,
             pad=16,
         )
         ax.legend(
@@ -178,14 +178,14 @@ def build_sa_compare_png(
     if n:
         y = np.arange(n)[::-1]  # SA 1 arriba
         h = 0.4
-        ax.barh(y + h / 2, [p * 100 for p in pct_il], h, label="Según IL", color=JCYL_RED)
-        ax.barh(y - h / 2, [p * 100 for p in pct_horas], h, label="Según horas", color=JCYL_GOLD)
+        ax.barh(y + h / 2, [p * 100 for p in pct_il], h, label="Según IL", color=COLOR_AZUL)
+        ax.barh(y - h / 2, [p * 100 for p in pct_horas], h, label="Según horas", color=COLOR_PLATA)
         ax.set_yticks(y)
         ax.set_yticklabels(labels, fontsize=7)
         ax.set_xlabel("% sobre el total", fontsize=8)
         ax.tick_params(axis="x", labelsize=7)
         ax.set_title("Peso de la SA: IL vs. horas", fontsize=9, fontweight="bold",
-                     color=JCYL_RED, pad=8)
+                     color=COLOR_AZUL, pad=8)
         ax.legend(fontsize=7, frameon=False, loc="lower right")
         ax.spines[["top", "right"]].set_visible(False)
         ax.xaxis.grid(True, color="#e6e6e6")
@@ -200,12 +200,12 @@ def build_sa_compare_png(
 
 
 # Tonos suaves para el rayado de filas (zebra), comunes a todas las tablas.
-# Tonos del tema Junta de Castilla y León (crema del oro) para el rayado.
+# Tonos del tema (azul y plata) para el rayado y las gráficas.
 ZEBRA_A = "#ffffff"
-ZEBRA_B = "#faf2e4"
-GRID_LINE = "#e6d8c6"
-JCYL_RED = "#a6182e"
-JCYL_GOLD = "#e0a21c"
+ZEBRA_B = "#F2F6FB"
+GRID_LINE = "#D6DEE8"
+COLOR_AZUL = "#0F5CA8"
+COLOR_PLATA = "#A9B8C8"
 
 
 def render_word_table_html(headers: list[str], rows: list[list]) -> str:

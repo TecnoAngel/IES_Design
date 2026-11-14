@@ -50,8 +50,8 @@ ANCHOS_PESOS = [4.4,       1.2,  1.0, 1.0,    1.0,  1.0]
 # Un color pastel por actividad (por su posición en la SA), el mismo en los
 # tres cuadros: (fondo, fondo suave, franja, texto). Texto ≥ 4,5:1 sobre blanco.
 TONOS = [
-    ("#FCE8EC", "#FEF5F7", "#E9A3B1", "#8A2A3C"),
     ("#E3EEF9", "#F2F7FC", "#93B8DE", "#2A557F"),
+    ("#FCE8EC", "#FEF5F7", "#E9A3B1", "#8A2A3C"),
     ("#E5F1E8", "#F3F8F4", "#9CC9A8", "#2E6640"),
     ("#FDEBDD", "#FEF6EF", "#EDB48A", "#8A4A1C"),
     ("#EEE7F7", "#F7F3FB", "#B9A3DB", "#553A80"),
@@ -70,25 +70,25 @@ CSS = """
    nuestras celdas eso descuadra las filas: se anula dentro de los cuadros. */
 [class*="st-key-actbox_"] [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
 
-/* Los tres cuadros: franja carmín arriba (recta: va como sombra interior, un
+/* Los tres cuadros: franja azul arriba (recta: va como sombra interior, un
    borde grueso se afila en las esquinas redondeadas) y título con su número.
    «gap» es la separación entre las filas del cuadro. */
 [class*="st-key-actbox_"] { border-radius: 10px !important; background: #fff; gap: 0.4rem !important;
-                            box-shadow: inset 0 3px 0 #A6182E, 0 2px 10px rgba(34,28,24,0.06) !important; }
+                            box-shadow: inset 0 3px 0 #0F5CA8, 0 2px 10px rgba(23,33,46,0.06) !important; }
 [class*="st-key-actil_"] { gap: 0.3rem !important; }
 .act-titulo { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.1rem; }
-.act-n    { flex: none; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: #A6182E; color: #fff;
+.act-n    { flex: none; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: #0F5CA8; color: #fff;
             font-weight: 700; font-size: 0.92rem; display: flex; align-items: center; justify-content: center; }
-.act-t    { font-size: 1.12rem; font-weight: 700; color: #7d1022; line-height: 1.2; }
-.act-sub  { font-size: 0.85rem; color: #5c524a; margin: 0 0 0.2rem 2.2rem; line-height: 1.4; }
+.act-t    { font-size: 1.12rem; font-weight: 700; color: #0A3D73; line-height: 1.2; }
+.act-sub  { font-size: 0.85rem; color: #556170; margin: 0 0 0.2rem 2.2rem; line-height: 1.4; }
 
 /* Fila de títulos de columna, filas y totales: mismo margen para que todo quede en columna */
 [class*="st-key-actcab_"], [class*="st-key-actfila_"], [class*="st-key-actpeso_"], .st-key-actpie_1 {
     padding: 0.25rem 0.7rem; border-left: 4px solid transparent; border-radius: 6px; }
-[class*="st-key-actcab_"] { background: #5c524a; }
+[class*="st-key-actcab_"] { background: #556170; }
 .act-cab  { font-size: 0.74rem; font-weight: 700; color: #fff; text-transform: uppercase;
             letter-spacing: 0.05em; white-space: nowrap; }
-.st-key-actpie_1 { border-top: 2px solid #e3d5c3; border-radius: 0; }
+.st-key-actpie_1 { border-top: 2px solid #D6DEE8; border-radius: 0; }
 /* (en el cuadro 2 las filas van dentro del bloque de su indicador, que tiene su propio margen) */
 .st-key-actcab_2 { padding-left: calc(1.15rem + 1px); padding-right: calc(1.15rem + 1px); }
 
@@ -101,10 +101,10 @@ CSS = """
 [class*="st-key-actfila_"] input { font-weight: 600; }
 
 /* Bloque de un indicador en el cuadro 2 */
-[class*="st-key-actil_"] { border: 1px solid #e3d5c3; border-radius: 8px; background: #fbf6ef; padding: 0.45rem; }
+[class*="st-key-actil_"] { border: 1px solid #D6DEE8; border-radius: 8px; background: #F3F6FA; padding: 0.45rem; }
 .act-il-cab { display: flex; align-items: baseline; gap: 0.6rem; padding: 0.1rem 0.3rem; }
-.act-il   { flex: none; font-weight: 700; color: #fff; background: #221c18; border-radius: 6px; padding: 0.05rem 0.5rem; }
-.act-il-txt { flex: 1; font-size: 0.92rem; font-weight: 600; color: #221c18; line-height: 1.3; }
+.act-il   { flex: none; font-weight: 700; color: #fff; background: #17212E; border-radius: 6px; padding: 0.05rem 0.5rem; }
+.act-il-txt { flex: 1; font-size: 0.92rem; font-weight: 600; color: #17212E; line-height: 1.3; }
 .act-il-ie { flex: none; }
 
 /* Textos de las celdas */
@@ -114,11 +114,11 @@ CSS = """
 .act-cod  { display: inline-block; min-width: 2.3rem; text-align: center; font-weight: 700;
             font-size: 0.9rem; border-radius: 6px; padding: 0.1rem 0.4rem; border: 1px solid; }
 .act-nombre { font-weight: 600; }
-.act-ie   { display: inline-block; font-size: 0.82rem; font-weight: 600; color: #221c18; background: #fff;
-            border: 1px solid #cdbba5; border-radius: 999px; padding: 0.1rem 0.65rem; }
+.act-ie   { display: inline-block; font-size: 0.82rem; font-weight: 600; color: #17212E; background: #fff;
+            border: 1px solid #B9C4D1; border-radius: 999px; padding: 0.1rem 0.65rem; }
 /* Selector de indicadores: una etiqueta por línea con el código y el texto
    del indicador; si no cabe se corta con «…» y se ve entero al pasar el ratón.
-   La etiqueta va sin borde (fondo crema) y sin los márgenes de Streamlit, con
+   La etiqueta va sin borde (fondo plata) y sin los márgenes de Streamlit, con
    el mismo hueco de 4px por arriba, abajo e izquierda: así queda centrada con
    la «x» y la flecha y no hay una caja dentro de otra. */
 [class*="st-key-paact_ils_"] [data-testid="stMultiSelect"] [role="group"] {
@@ -130,11 +130,11 @@ CSS = """
 [class*="st-key-paact_ils_"] [data-testid="stMultiSelectTagsContainer"] input { margin: 0 !important; }
 [class*="st-key-paact_ils_"] [data-testid="stMultiSelect"] [role="group"] span[data-tag] {
     display: flex; max-width: 100% !important; min-width: 0; margin: 0 !important;
-    background: #f4ece1 !important; border: none; border-radius: 5px !important; }
+    background: #E8EEF5 !important; border: none; border-radius: 5px !important; }
 [class*="st-key-paact_ils_"] [data-tag] > span {
     flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    color: #221c18 !important; cursor: help; }
-[class*="st-key-paact_ils_"] [data-tag] * { color: #221c18 !important; }
+    color: #17212E !important; cursor: help; }
+[class*="st-key-paact_ils_"] [data-tag] * { color: #17212E !important; }
 </style>
 """
 
