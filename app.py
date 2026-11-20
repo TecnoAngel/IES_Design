@@ -1356,6 +1356,25 @@ def _ajuste_pesos_ipf(il_rows, ce_list, ce_ced, ce_p, sits):
     if ss.pop("ipf_msg", None):
         st.success("Pesos cargados: las tablas y los gráficos ya están actualizados.")
 
+    # Modo: por instrumento y horas (el de siempre) o por una categoría de los
+    # indicadores (p. ej. Destrezas), si se ha definido alguna.
+    _cats_aj = [c for c in ss.get("il_categorias", []) if c["nombre"]]
+    if _cats_aj:
+        _modos = {"ie": "Instrumento y horas", **{c["id"]: f"Por {c['nombre']}" for c in _cats_aj}}
+        if ss.get("ipf_modo") not in _modos:
+            ss.ipf_modo = "ie"
+        _modo = st.radio("Ajustar por", list(_modos), format_func=_modos.get, horizontal=True,
+                         key="ipf_modo")
+        if _modo != "ie":
+            from ui import ajuste_categoria
+
+            ajuste_categoria.pintar(
+                il_rows, ce_list, ce_p, next(c for c in _cats_aj if c["id"] == _modo),
+                tabla_html=_tabla_html,
+                cargar=lambda p, q: _ipf_cargar(p, q, ce_ced, ce_list),
+            )
+            return
+
     if not reparto_horario(sits):
         st.info("Las situaciones de aprendizaje no tienen horas.")
         return

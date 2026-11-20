@@ -247,3 +247,99 @@ def sugerir_pesos(il_rows, sits, ie_objetivo: dict[str, float], *, max_iter: int
         "sa_con_horas_sin_il": sa_con_horas_sin_il,
         "sa_sin_horas": sa_sin_horas,
     }
+
+
+# ---------------------------------------------------------------------------
+# Ajuste por una categoría de los indicadores (p. ej. «Destrezas»)
+# ---------------------------------------------------------------------------
+def pesos_globales(il_rows, ce_p: dict[str, float]) -> dict[str, float]:
+    """% que pesa cada indicador sobre la programación = (PIL/ΣPIL del CE) ·
+    (P/ΣP), en puntos porcentuales (suman 100 salvo CE con peso y sin IL)."""
+    filas = [r for r in il_rows if _s(r.get("IL"))]
+    suma_pil: dict[str, float] = {}
+    for r in filas:
+        suma_pil[_s(r.get("CE"))] = suma_pil.get(_s(r.get("CE")), 0.0) + float(r.get("PIL") or 0)
+    suma_p = sum(float(p or 0) for p in (ce_p or {}).values())
+    out: dict[str, float] = {}
+    for r in filas:
+        ce = _s(r.get("CE"))
+        pil = float(r.get("PIL") or 0)
+        frac = pil / suma_pil[ce] if suma_pil.get(ce) else 0.0
+        out[_s(r.get("IL"))] = frac * (float((ce_p or {}).get(ce, 0) or 0) / suma_p * 100 if suma_p else 0.0)
+    return out
+
+
+def sugerir_por_categoria(il_rows, ce_p: dict[str, float], categoria: dict,
+                          objetivo: dict[int, float]) -> dict:
+    """Pesos P (de los criterios) y PIL (solo de los indicadores que lo necesiten)
+    para que cada opción de ``categoria`` pese en la programación el % de
+    ``objetivo`` ({id de opción: %}).
+
+    Cada indicador se escala por (objetivo de su opción / peso actual de su
+    opción). Los indicadores sin opción conservan su peso y los objetivos se
+    reparten entre el resto (``100 - peso de los sin opción``). El P de cada
+    criterio sale como suma de sus indicadores escalados (suman 100). Si todos
+    los indicadores de un criterio son de la misma opción, su PIL no cambia (solo
+    cambia P); si son de varias, sus PIL pasan a ser los pesos escalados."""
+    cid = categoria["id"]
+    opciones = {o["id"]: o["nombre"] for o in categoria.get("opciones", [])}
+    filas = [r for r in il_rows if _s(r.get("IL"))]
+    w = pesos_globales(filas, ce_p)
+    total = sum(w.values()) or 1.0
+    w = {il: v / total * 100 for il, v in w.items()}  # normalizado a 100
+
+    def _opc(r):
+        o = (r.get("CAT") or {}).get(cid)
+        return o if o in opciones else None
+
+    grupos: dict[int, list[dict]] = {}
+    sin_opcion: list[str] = []
+    for r in filas:
+        o = _opc(r)
+        if o is None:
+            sin_opcion.append(_s(r["IL"]))
+        else:
+            grupos.setdefault(o, []).append(r)
+    peso_op = {o: sum(w[_s(r["IL"])] for r in rs) for o, rs in grupos.items()}
+    actual = {o: peso_op.get(o, 0.0) for o in opciones}
+
+    presupuesto = max(0.0, 100.0 - sum(w[il] for il in sin_opcion))
+    obj = {o: max(0.0, float(objetivo.get(o) or 0)) for o in opciones}
+    alcanzables = {o for o in opciones if peso_op.get(o, 0) > 0}
+    sin_indicadores = [o for o in opciones if obj[o] > 0 and o not in alcanzables]
+    tot_obj = sum(obj[o] for o in alcanzables)
+    meta = {o: (obj[o] / tot_obj * presupuesto if tot_obj else 0.0) for o in alcanzables}
+
+    nuevo: dict[str, float] = {}
+    for r in filas:
+        il, o = _s(r["IL"]), _opc(r)
+        nuevo[il] = w[il] if o not in alcanzables else w[il] * meta[o] / peso_op[o]
+
+    p_por_ce: dict[str, float] = {}
+    for r in filas:
+        ce = _s(r.get("CE"))
+        p_por_ce[ce] = p_por_ce.get(ce, 0.0) + nuevo[_s(r["IL"])]
+    p_por_ce = {ce: round(v, 4) for ce, v in p_por_ce.items()}
+
+    pil_por_il: dict[str, float] = {}
+    por_ce: dict[str, list[dict]] = {}
+    for r in filas:
+        por_ce.setdefault(_s(r.get("CE")), []).append(r)
+    for ce, rs in por_ce.items():
+        factores = {round(nuevo[_s(r["IL"])] / w[_s(r["IL"])], 9) if w[_s(r["IL"])] else 1.0 for r in rs}
+        if len(factores) > 1:  # indicadores de varias opciones: cambia su reparto
+            for r in rs:
+                pil_por_il[_s(r["IL"])] = round(nuevo[_s(r["IL"])], 3)
+
+    return {
+        "p_por_ce": p_por_ce,
+        "pil_por_il": pil_por_il,
+        "actual": actual,
+        "sugerido": {o: sum(nuevo[_s(r["IL"])] for r in grupos.get(o, [])) for o in opciones},
+        "sin_opcion": sin_opcion,
+        "sin_indicadores": sin_indicadores,
+        "opcion_de_ce": {
+            ce: opciones.get(_opc(rs[0]), "") if len({_opc(r) for r in rs}) == 1 else "varias"
+            for ce, rs in por_ce.items()
+        },
+    }
