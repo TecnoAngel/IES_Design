@@ -498,10 +498,12 @@ page = st.session_state.active_page
 #    cualquier página. La descarga se rellena luego (dl_box), cuando la página
 #    activa ya ha recogido los cambios.
 from tools import curriculo as cur
+from tools import categorias as categorias_def
 from tools import redaccion as red_def
 from tools.indicadores_logro import recompute as il_recompute
 from tools.info_familias import CAMPOS_KEYS as FAM_CAMPOS
 from tools.programacion_aula_editor import desde_formato_antiguo
+from ui import categorias as ui_categorias
 from tools.proyecto import DATOS_CAMPOS, SA_CAMPOS, estado_vacio, guardar_proyecto, leer_proyecto
 from tools.situaciones_aprendizaje import TRIMESTRES
 
@@ -566,6 +568,7 @@ def _cargar_estado(estado: dict, nombre: str) -> None:
     ss.il_ce_p = {ce: float(estado["ce_p"].get(ce, 0) or 0) for ce in ce_list}
     ss.il_rows = il_recompute(estado["il_rows"], curm["ce_ced"], ce_list)
     ss.il_aux = curm["aux"]
+    ss.il_categorias = categorias_def.normalizar(estado.get("categorias"))
     ss.elementos = curm["elementos"]
 
     ss.pa_datos = {k: estado["pa_datos"].get(k, "") for k in DATOS_CAMPOS}
@@ -595,7 +598,7 @@ def _cargar_estado(estado: dict, nombre: str) -> None:
     # este proyecto, o se vuelve a proponer el reparto automático si no tiene).
     for _k in [
         k for k in list(ss.keys())
-        if k.startswith(("fam_w_", "pad_", "pasa_", "ses_tr", "ses_d", "paact_", "pa_new_", "redw_"))
+        if k.startswith(("fam_w_", "pad_", "pasa_", "ses_tr", "ses_d", "paact_", "pa_new_", "redw_", "ilcat_"))
         or k in ("ses_loc", "ses_loc_on")
     ]:
         ss.pop(_k, None)
@@ -784,6 +787,7 @@ def _estado_actual() -> dict:
         ),
         "ce_p": {r["CE"]: r["P"] for r in ss.get("ce_rows", [])} or dict(ss.il_ce_p),
         "il_rows": il_g,
+        "categorias": ss.get("il_categorias", []),
         "pa_datos": dict(ss.get("pa_datos", {})),
         "pa_sa_cols": ss.get("pa_sa_cols", []),
         "pa_acts": ss.get("pa_acts", []),
@@ -2031,6 +2035,7 @@ if page == "Diseño de la programación":
                     (None if r["PIL"] in (None, "") else float(r["PIL"])),
                     r["DIL"], r["DO"], r["CON"], r["CT"], r["IE"], r["CC"], r["AE"],
                     (None if r["SA"] in (None, "") else int(r["SA"])),
+                    tuple(sorted((r.get("CAT") or {}).items())),
                 )
                 for r in rows
             ]
@@ -2040,7 +2045,14 @@ if page == "Diseño de la programación":
         st.session_state.setdefault("il_nonce", 0)
 
         def _parse_grid_row(r):
+            _cat = {}
+            for _c in st.session_state.get("il_categorias", []):
+                _v = r.get(categorias_def.columna(_c["id"]))
+                _oid = None if _v is None or pd.isna(_v) else categorias_def.id_de_opcion(_c, _v)
+                if _oid is not None:
+                    _cat[_c["id"]] = _oid
             return {
+                "CAT": _cat,
                 "CE": "" if pd.isna(r.get("CE")) else str(r.get("CE")).strip(),
                 "CED": "", "IL": "",
                 "PIL": None if r.get("PIL") in (None, "") or pd.isna(r.get("PIL")) else float(r.get("PIL")),
@@ -2085,6 +2097,9 @@ if page == "Diseño de la programación":
             # valor de la columna SA (texto) que pasa el filtro; None = todas
             _filtro_val = {"Todas": None, "Sin SA": ""}.get(filtro_sa, filtro_sa)
 
+            ui_categorias.pintar(lambda filas: il_recompute(filas, ce_ced, ce_list))
+            _cats = st.session_state.get("il_categorias", [])
+
             ac1, ac2, ac3, ac4, ac5, _ = st.columns([1.7, 0.8, 1.15, 1.15, 0.9, 1.6])
             add_ce = ac1.selectbox("Criterio", ce_list, key="il_add_ce", label_visibility="collapsed")
             add_n = ac2.number_input("nº", 1, 20, 1, key="il_add_n", label_visibility="collapsed")
@@ -2101,13 +2116,21 @@ if page == "Diseño de la programación":
                         "DIL": r["DIL"], "DO": r["DO"], "CON": r["CON"], "CT": r["CT"],
                         "IE": r["IE"], "CC": r["CC"], "AE": r["AE"],
                         "SA": "" if r["SA"] in (None, "") else str(r["SA"]),
+                        **{
+                            categorias_def.columna(c["id"]): categorias_def.nombre_de_opcion(
+                                c, (r.get("CAT") or {}).get(c["id"])
+                            )
+                            for c in _cats
+                        },
                         "__shade": False,  # se calcula justo debajo
                         "_pick": "",  # aviso de clic en CON (ver onCellClicked)
                     }
                     for r in st.session_state.il_rows
                 ],
                 columns=["X", "CE", "CED", "IL", "PIL", "PIL%", "DIL", "DO",
-                         "CON", "CT", "IE", "CC", "AE", "SA", "__shade", "_pick"],
+                         "CON", "CT", "IE", "CC", "AE", "SA",
+                         *[categorias_def.columna(c["id"]) for c in _cats],
+                         "__shade", "_pick"],
             )
             # sombreado alterno por CE contando solo las filas que se ven
             _ce_seq = list(dict.fromkeys(
@@ -2174,6 +2197,12 @@ if page == "Diseño de la programación":
                                 cellEditorParams={"values": _with_existing(aux.get("AE", []), "AE")})
             gb.configure_column("SA", width=62, cellEditor="agSelectCellEditor",
                                 cellEditorParams={"values": [str(x) for x in sa_col_opts]})
+            for _c in _cats:
+                gb.configure_column(
+                    categorias_def.columna(_c["id"]), headerName=_c["nombre"] or "(sin nombre)",
+                    width=130, cellEditor="agSelectCellEditor",
+                    cellEditorParams={"values": [""] + [o["nombre"] for o in _c["opciones"] if o["nombre"]]},
+                )
             gb.configure_grid_options(
                 enableBrowserTooltips=True,
                 tooltipShowDelay=300,

@@ -20,7 +20,10 @@ Estado (dict)::
     horas_dia            [L, M, X, J, V]
     festivo_local        date | None
     ce_p                 {CE: P}
-    il_rows              [{"CE", "PIL", "DIL", "DO", "CON", "CT", "IE", "CC", "AE", "SA"}]
+    il_rows              [{"CE", "PIL", "DIL", "DO", "CON", "CT", "IE", "CC", "AE", "SA",
+                           "CAT": {id_categoria: id_opcion}}]
+    categorias           [{"id", "nombre", "opciones": [{"id", "nombre"}]}]  (opcional,
+                         ver tools.categorias)
     pa_datos             {campo: valor}         (orden: DATOS_CAMPOS)
     pa_sa_cols           [{"nombre", "valores": {campo: valor}}]  una por SA
     pa_acts              [{"id", "SA", "IE", "titulo", "ils": [{"IL", "PA"}]}]
@@ -42,7 +45,7 @@ import re
 import sqlite3
 from datetime import date, datetime
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 
 # Campos de «Datos generales» y de cada SA en la programación de aula (los
 # que usa la plantilla Word; mismo orden que tenían las hojas del Excel).
@@ -96,7 +99,58 @@ CREATE TABLE familias (campo TEXT PRIMARY KEY, valor TEXT NOT NULL DEFAULT '');
 CREATE TABLE redaccion (
   clave TEXT PRIMARY KEY, tipo TEXT NOT NULL, valor TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE categorias (
+  id INTEGER PRIMARY KEY, nombre TEXT NOT NULL DEFAULT '', orden INTEGER NOT NULL
+);
+CREATE TABLE categoria_opciones (
+  id INTEGER PRIMARY KEY, categoria INTEGER NOT NULL REFERENCES categorias(id) ON DELETE CASCADE,
+  nombre TEXT NOT NULL, orden INTEGER NOT NULL
+);
+CREATE TABLE indicador_categoria (
+  indicador INTEGER NOT NULL,
+  categoria INTEGER NOT NULL REFERENCES categorias(id) ON DELETE CASCADE,
+  opcion INTEGER NOT NULL REFERENCES categoria_opciones(id) ON DELETE CASCADE,
+  PRIMARY KEY (indicador, categoria)
+);
 """
+# Compatibilidad entre versiones de la app (ver MEMORIA.md, «Compatibilidad del
+# proyecto»): el archivo se reescribe entero con el esquema actual, y la lectura
+# nunca falla por una tabla o columna que falte (cada bloque comprueba si existe)
+# ni se queja de las que no conoce. ``SCHEMA_VERSION`` es solo informativo.
+# categorias / categoria_opciones / indicador_categoria (schema 3): categorías
+# opcionales de los indicadores (ver tools.categorias). ``indicador_categoria.
+# indicador`` = ``indicadores.orden``; se guardan ids, no nombres.
+
+
+def _tabla_existe(con: sqlite3.Connection, nombre: str) -> bool:
+    return bool(
+        con.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (nombre,)
+        ).fetchone()
+    )
+
+
+def _leer_categorias(con: sqlite3.Connection) -> tuple[list[dict], dict[int, dict[int, int]]]:
+    """(categorías, {orden del indicador: {categoría: opción}}). Vacío en los
+    proyectos anteriores a las categorías."""
+    from tools.categorias import normalizar
+
+    if not (_tabla_existe(con, "categorias") and _tabla_existe(con, "categoria_opciones")):
+        return [], {}
+    cats = {
+        i: {"id": i, "nombre": n or "", "opciones": []}
+        for i, n in con.execute("SELECT id, nombre FROM categorias ORDER BY orden")
+    }
+    for i, c, n in con.execute(
+        "SELECT id, categoria, nombre FROM categoria_opciones ORDER BY orden"
+    ):
+        if c in cats:
+            cats[c]["opciones"].append({"id": i, "nombre": n or ""})
+    asignadas: dict[int, dict[int, int]] = {}
+    if _tabla_existe(con, "indicador_categoria"):
+        for ind, c, o in con.execute("SELECT indicador, categoria, opcion FROM indicador_categoria"):
+            asignadas.setdefault(ind, {})[c] = o
+    return normalizar(list(cats.values())), asignadas
 # redaccion.tipo: 'texto' (valor = el texto), 'opcion' (valor = '1' / '0': si
 # aparece una tabla o gráfica automática) o 'tabla' (valor = JSON con la lista
 # de filas, cada una {columna: texto}).
@@ -196,6 +250,7 @@ def estado_vacio(curriculo: dict) -> dict:
         "festivo_local": None,
         "ce_p": {ce: 1 for ce in curriculo["ce_list"]},
         "il_rows": [],
+        "categorias": [],
         "pa_datos": datos,
         "pa_sa_cols": [],
         "pa_acts": [],
@@ -249,13 +304,20 @@ def leer_proyecto(payload: bytes) -> dict:
             vals["trimestre"] = trimestre_txt(s["EV"])
             pa_sa_cols.append({"nombre": f"Situación {s['SA']}", "valores": vals})
 
+        categorias, asignadas = _leer_categorias(con)
         il_rows = [
-            dict(zip(IL_CAMPOS, (ce, _num(pil), d, do, con_, ct, ie, cc, ae, sa)))
-            for ce, pil, d, do, con_, ct, ie, cc, ae, sa in con.execute(
-                "SELECT ce, pil, descripcion, descriptores, contenidos, transversales, "
+            {
+                **dict(zip(IL_CAMPOS, (ce, _num(pil), d, do, con_, ct, ie, cc, ae, sa))),
+                "CAT": asignadas.get(orden, {}),
+            }
+            for orden, ce, pil, d, do, con_, ct, ie, cc, ae, sa in con.execute(
+                "SELECT orden, ce, pil, descripcion, descriptores, contenidos, transversales, "
                 "ie, cc, ae, sa FROM indicadores ORDER BY orden"
             )
         ]
+        from tools.categorias import limpiar_filas
+
+        il_rows = limpiar_filas(categorias, il_rows)
         acts, antiguas = [], []
         cols_act = {c[1] for c in con.execute("PRAGMA table_info(actividades)")}
         if "il" in cols_act:  # schema 1: una actividad = un IL
@@ -293,6 +355,7 @@ def leer_proyecto(payload: bytes) -> dict:
             "festivo_local": _fecha(cfg.get("festivo_local")),
             "ce_p": {ce: _num(p) or 0 for ce, p in con.execute("SELECT ce, peso FROM criterios_peso")},
             "il_rows": il_rows,
+            "categorias": categorias,
             "pa_datos": datos,
             "pa_sa_cols": pa_sa_cols,
             "pa_acts": acts,
@@ -392,6 +455,20 @@ def guardar_proyecto(
                     for i, r in enumerate(estado.get("il_rows", []))
                 ],
             )
+            from tools.categorias import limpiar_filas, normalizar
+
+            cats = normalizar(estado.get("categorias"))
+            for orden, c in enumerate(cats):
+                con.execute("INSERT INTO categorias VALUES (?, ?, ?)", (c["id"], c["nombre"], orden))
+                con.executemany(
+                    "INSERT INTO categoria_opciones VALUES (?, ?, ?, ?)",
+                    [(o["id"], c["id"], o["nombre"], j) for j, o in enumerate(c["opciones"])],
+                )
+            for i, r in enumerate(limpiar_filas(cats, estado.get("il_rows", []))):
+                con.executemany(
+                    "INSERT INTO indicador_categoria VALUES (?, ?, ?)",
+                    [(i, c, o) for c, o in r["CAT"].items()],
+                )
             for orden, a in enumerate(estado.get("pa_acts", [])):
                 con.execute(
                     "INSERT INTO actividades VALUES (?, ?, ?, ?, ?)",
