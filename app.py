@@ -588,7 +588,7 @@ def _cargar_estado(estado: dict, nombre: str) -> None:
     # al cambiar de proyecto, se descartan los estados canónicos derivados
     for _k in (
         "prog_out", "sa_grid_rows", "ce_rows", "il_pending", "pa_docx", "pd_docx",
-        "consist_seen", "fam_docx", "prog_msg", "ipf_obj_df", "il_filtro_sa",
+        "consist_seen", "fam_docx", "prog_msg", "ipf_obj_df", "il_filtro_sa", "il_ocultas",
         "pa_sa_actual",
     ):
         ss.pop(_k, None)
@@ -2089,9 +2089,28 @@ if page == "Diseño de la programación":
             _filtro_opts = ["Todas"] + [str(x) for x in sa_options] + ["Sin SA"]
             if st.session_state.get("il_filtro_sa") not in _filtro_opts:
                 st.session_state.il_filtro_sa = "Todas"
-            filtro_sa = st.columns([1, 3])[0].selectbox(
+            _fc1, _fc2, _ = st.columns([1, 2.4, 1.6])
+            filtro_sa = _fc1.selectbox(
                 "Filtrar por SA", _filtro_opts, key="il_filtro_sa",
                 format_func=lambda v: v if v in ("Todas", "Sin SA") else f"SA {v}",
+                on_change=_il_filtro_cambia,
+            )
+            # Columnas que se pueden ocultar (las demás son imprescindibles). Se
+            # guardan las OCULTAS, así una columna nueva (categoría) sale visible.
+            # Es una preferencia de la sesión, no va al proyecto. Cambiarlas
+            # remonta la rejilla, por eso consolida antes lo tecleado.
+            _ocultables = {
+                "CED": "CED", "DIL": "DIL", "DO": "DO", "CON": "CON", "CT": "CT",
+                "IE": "IE", "CC": "CC", "AE": "AE", "SA": "SA",
+                **{categorias_def.columna(c["id"]): c["nombre"] or "(sin nombre)"
+                   for c in st.session_state.get("il_categorias", [])},
+            }
+            st.session_state.il_ocultas = [
+                c for c in st.session_state.get("il_ocultas", []) if c in _ocultables
+            ]
+            _ocultas = _fc2.multiselect(
+                "Ocultar columnas", list(_ocultables), key="il_ocultas",
+                format_func=_ocultables.get, placeholder="Todas visibles",
                 on_change=_il_filtro_cambia,
             )
             # valor de la columna SA (texto) que pasa el filtro; None = todas
@@ -2203,6 +2222,8 @@ if page == "Diseño de la programación":
                     width=130, cellEditor="agSelectCellEditor",
                     cellEditorParams={"values": [""] + [o["nombre"] for o in _c["opciones"] if o["nombre"]]},
                 )
+            for _o in _ocultas:
+                gb.configure_column(_o, hide=True)
             gb.configure_grid_options(
                 enableBrowserTooltips=True,
                 tooltipShowDelay=300,
@@ -2233,7 +2254,7 @@ if page == "Diseño de la programación":
                 custom_css=AGGRID_LINES_CSS,
                 height=430,
                 theme="balham",
-                key=f"il_grid_{st.session_state.il_nonce}_{filtro_sa}",
+                key=f"il_grid_{st.session_state.il_nonce}_{filtro_sa}_{'-'.join(sorted(_ocultas))}",
             )
 
             # Lo que hay ahora mismo en la rejilla (en su orden actual, sin agrupar).
