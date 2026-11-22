@@ -124,5 +124,7 @@ regenerarla, ejecuta `python -m tools.plantilla_familias`.
 - Hasta octubre de 2026 la app trabajaba sobre un Excel de programación con
   Power Pivot. Ya no se usa.
 
+Estructura de las bases de datos: [DOCUMENTACION_BD.md](DOCUMENTACION_BD.md).
+
 Más detalle interno (modelo de datos, decisiones, trampas conocidas,
 bitácora): ver [MEMORIA.md](MEMORIA.md).
