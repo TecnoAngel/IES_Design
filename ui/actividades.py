@@ -42,8 +42,8 @@ from tools.programacion_aula_editor import (
 )
 
 # Anchos relativos de las columnas de cada cuadro (st.columns).
-#                     código  nombre  borrar  IL   instrumento  % prog  % SA
-ANCHOS_ACTIVIDADES = [0.55,   3.0,    0.45,   3.8, 2.0,         1.0,    1.0]
+#                     código  nombre  borrar  instr. IL           % prog  % SA
+ANCHOS_ACTIVIDADES = [0.55,   3.0,    0.45,   2.0, 3.8,         1.0,    1.0]
 #               actividad  peso  %    % prog  % SA  factor
 ANCHOS_PESOS = [4.4,       1.2,  1.0, 1.0,    1.0,  1.0]
 
@@ -202,8 +202,9 @@ def _guardar(actividades: list[dict]) -> None:
 # Funciones on_change: pasan lo que ha tocado el docente a pa_acts
 # ─────────────────────────────────────────────────────────────────────────────
 def _al_cambiar_actividad(aid: int, il_info: dict) -> None:
-    """Nombre o indicadores de la actividad `aid`. El instrumento es siempre
-    el de sus indicadores."""
+    """Nombre o indicadores de la actividad `aid`. El instrumento lo elige el
+    docente (``_al_cambiar_instrumento``); si aún no lo ha hecho, se toma el del
+    primer indicador elegido."""
     ss = st.session_state
     titulo = str(ss.get(f"paact_tit_{aid}") or "").strip()
     elegidos = list(ss.get(f"paact_ils_{aid}") or [])
@@ -211,9 +212,26 @@ def _al_cambiar_actividad(aid: int, il_info: dict) -> None:
     for a in ss.pa_acts:
         if a["id"] == aid:
             pesos = {e["IL"]: e.get("PA") for e in a.get("ils", [])}
-            instrumento = str(il_info.get(elegidos[0], {}).get("IE") or "") if elegidos else ""
+            instrumento = str(a.get("IE") or "")
+            if not instrumento and elegidos:
+                instrumento = str(il_info.get(elegidos[0], {}).get("IE") or "")
             a = dict(a, titulo=titulo, IE=instrumento,
                      ils=[{"IL": il, "PA": pesos.get(il)} for il in elegidos])
+        nuevas.append(a)
+    _guardar(nuevas)
+
+
+def _al_cambiar_instrumento(aid: int, il_info: dict) -> None:
+    """Instrumento elegido para la actividad `aid`: se quedan solo los
+    indicadores que tienen ese instrumento."""
+    ss = st.session_state
+    ie = str(ss.get(f"paact_ie_{aid}") or "")
+    nuevas = []
+    for a in ss.pa_acts:
+        if a["id"] == aid:
+            ils = [e for e in a.get("ils", [])
+                   if not ie or str(il_info.get(e["IL"], {}).get("IE") or "") == ie]
+            a = dict(a, IE=ie, ils=ils)
         nuevas.append(a)
     _guardar(nuevas)
 
@@ -297,6 +315,9 @@ def pintar(sa, il_rows: list[dict], ce_p: dict[str, float]) -> None:
 def _cuadro_actividades(d: dict) -> None:
     ss = st.session_state
     il_info = d["il_info"]
+    # Instrumentos a elegir: los del catálogo y los que ya usan indicadores de la SA.
+    ies = [str(x) for x in ss.get("il_aux", {}).get("IE", []) if x]
+    ies += [str(r["IE"]) for r in d["ils_sa"] if r.get("IE") and str(r["IE"]) not in ies]
 
     def etiqueta_il(il: str) -> str:
         """«1.2.1 · texto del indicador» (lo que se ve en el selector)."""
@@ -304,18 +325,18 @@ def _cuadro_actividades(d: dict) -> None:
         return f"{il} · {texto}" if texto else il
 
     _titulo(1, "Actividades",
-            "Pon nombre a cada actividad y elige el indicador de logro que evalúa (pueden ser "
-            "varios si comparten instrumento). El instrumento es el del indicador. «% prog.» y "
+            "Pon nombre a cada actividad, elige su instrumento de evaluación y los indicadores de "
+            "logro que evalúa (solo se ofrecen los de ese instrumento). «% prog.» y "
             "«% SA»: valor sobre la programación y sobre la situación de aprendizaje.")
     _cabecera(1, ANCHOS_ACTIVIDADES,
-              ["", "Actividad", "", "Indicador de logro", "Instrumento",
+              ["", "Actividad", "", "Instrumento", "Indicador de logro",
                "% prog.", "% SA"], desde_num=5)
 
     for a in d["acts_sa"]:
         aid = a["id"]
         elegidos = [e["IL"] for e in a.get("ils", [])]
         with st.container(key=f"actfila_{aid}"):
-            c_cod, c_nom, c_del, c_il, c_ie, c_prog, c_sa = st.columns(
+            c_cod, c_nom, c_del, c_ie, c_il, c_prog, c_sa = st.columns(
                 ANCHOS_ACTIVIDADES, vertical_alignment="center")
 
             _celda(c_cod, _etiqueta_actividad(a, d["cod"], d["tono"]))
@@ -333,9 +354,9 @@ def _cuadro_actividades(d: dict) -> None:
                 on_click=_borrar_actividad, args=(aid,),
             )
 
-            # Indicadores que se ofrecen: todos los de la SA si aún no hay
-            # ninguno elegido; si ya hay, solo los del mismo instrumento.
-            if elegidos:
+            # Indicadores que se ofrecen: los de la SA con el instrumento de la
+            # actividad (todos si aún no se ha elegido instrumento).
+            if a.get("IE"):
                 opciones = [r["IL"] for r in d["ils_sa"]
                             if str(r.get("IE") or "") == str(a.get("IE") or "")]
                 opciones += [il for il in elegidos if il not in opciones]
@@ -348,10 +369,20 @@ def _cuadro_actividades(d: dict) -> None:
                 label_visibility="collapsed",
                 on_change=_al_cambiar_actividad, args=(aid, il_info),
             )
-            if not elegidos:
-                _celda(c_ie, '<span class="pa-tag warn">Sin indicador</span>')
-            else:
+            if elegidos:
+                # Con indicadores, el instrumento es el de ellos (solo se muestra).
                 _celda(c_ie, _instrumento(a.get("IE")))
+            else:
+                # Actividad nueva (o vaciada): se elige el instrumento, que filtra
+                # los indicadores que se ofrecen.
+                actual = str(a.get("IE") or "")
+                op_ie = ies + ([actual] if actual and actual not in ies else [])
+                ss[f"paact_ie_{aid}"] = actual or None
+                c_ie.selectbox(
+                    "Instrumento de evaluación", op_ie, key=f"paact_ie_{aid}", index=None,
+                    placeholder="Elige instrumento", label_visibility="collapsed",
+                    on_change=_al_cambiar_instrumento, args=(aid, il_info),
+                )
             valor = d["valor_act"][aid]
             _celda(c_prog, _pct(valor["valor_prog"]), "act-num act-fuerte")
             _celda(c_sa, _pct(valor["valor_sa"]), "act-num act-fuerte")
