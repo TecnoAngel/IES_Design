@@ -257,14 +257,6 @@ def pintar(sa, il_rows: list[dict], ce_p: dict[str, float]) -> None:
                 "(se asignan en «Diseño de la programación» › Indicadores de logro).")
         return
 
-    # SA sin actividades: se empieza con una actividad vacía por indicador.
-    if not any(a.get("SA") == sa for a in ss.pa_acts):
-        nuevas = list(ss.pa_acts)
-        for r in ils_sa:
-            nuevas.append({"id": nuevo_id(nuevas), "SA": sa, "IE": str(r.get("IE") or ""),
-                           "titulo": "", "ils": [{"IL": r["IL"], "PA": None}]})
-        _guardar(nuevas)
-
     acts_sa = [a for a in ss.pa_acts if a.get("SA") == sa]
     # Datos calculados que comparten los tres cuadros
     d = {
@@ -292,10 +284,11 @@ def pintar(sa, il_rows: list[dict], ce_p: dict[str, float]) -> None:
 
     with st.container(border=True, key="actbox_1"):
         _cuadro_actividades(d)
-    with st.container(border=True, key="actbox_2"):
-        _cuadro_pesos(d)
-    with st.container(border=True, key="actbox_3"):
-        _cuadro_cuaderno(d)
+    if acts_sa:  # sin actividades no hay nada que repartir ni que ver en el cuaderno
+        with st.container(border=True, key="actbox_2"):
+            _cuadro_pesos(d)
+        with st.container(border=True, key="actbox_3"):
+            _cuadro_cuaderno(d)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -362,6 +355,15 @@ def _cuadro_actividades(d: dict) -> None:
             valor = d["valor_act"][aid]
             _celda(c_prog, _pct(valor["valor_prog"]), "act-num act-fuerte")
             _celda(c_sa, _pct(valor["valor_sa"]), "act-num act-fuerte")
+
+    # Aviso de indicadores que aún no se evalúan en ninguna actividad
+    sin_act = [r["IL"] for r in d["ils_sa"] if not d["enlaces"].get(r["IL"])]
+    if sin_act:
+        n = len(sin_act)
+        _html('<div style="margin:6px 0"><span class="pa-tag warn">Sin actividad</span> '
+              + (f"{n} indicadores de esta situación de aprendizaje no están en ninguna actividad."
+                 if n > 1 else "1 indicador de esta situación de aprendizaje no está en ninguna actividad.")
+              + "</div>")
 
     # Fila de totales
     with st.container(key="actpie_1"):

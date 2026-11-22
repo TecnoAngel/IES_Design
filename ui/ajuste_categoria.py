@@ -55,9 +55,32 @@ def agrupaciones(il_rows, categorias, aux) -> tuple[dict, list]:
                                   for v in usados + extra]}
         for f, v in zip(filas, valores):
             f["CAT"][cid] = v or None
-    for c in categorias or []:
-        if c["nombre"]:
-            cats[c["id"]] = c
+    lista = [c for c in categorias or [] if c["nombre"]]
+    if lista:
+        cats[lista[0]["id"]] = lista[0]
+    for k, c in enumerate(lista[1:], start=1):
+        # Categoría de un nivel inferior: un indicador sin opción aquí cuenta con
+        # la de la categoría anterior (la primera que tenga), para poder ajustarla.
+        nom = [{o["id"]: o["nombre"] for o in cc["opciones"] if o["nombre"]} for cc in lista[: k + 1]]
+        pos = [{o["id"]: i for i, o in enumerate(cc["opciones"])} for cc in lista[: k + 1]]
+        etiquetas: dict[str, tuple] = {}
+        for f in filas:
+            asign = f["CAT"]
+            etiqueta = None
+            for j in range(k, -1, -1):
+                o = asign.get(lista[j]["id"])
+                if o in nom[j]:
+                    etiqueta = nom[j][o]
+                    break
+            if etiqueta is not None:
+                orden = (pos[0].get(asign.get(lista[0]["id"]), 999), pos[k].get(asign.get(c["id"]), -1))
+                etiquetas[etiqueta] = min(orden, etiquetas.get(etiqueta, orden))
+            f["CAT"][c["id"]] = etiqueta
+        cats[c["id"]] = {
+            "id": c["id"], "nombre": c["nombre"],
+            "nota": f"Los indicadores sin «{c['nombre']}» cuentan con su categoría anterior.",
+            "opciones": [{"id": e, "nombre": e} for e in sorted(etiquetas, key=etiquetas.get)],
+        }
     return cats, filas
 
 
@@ -81,6 +104,8 @@ def pintar(il_rows, ce_list, ce_p, categoria, *, tabla_html, cargar) -> None:
         )
         return
 
+    if categoria.get("nota"):
+        st.caption(categoria["nota"])
     nombre = {o["id"]: o["nombre"] for o in opciones}
     actual = sugerir_por_categoria(il_rows, ce_p, categoria, {})["actual"]
     clave_df = f"ipf_cat_df_{cid}"

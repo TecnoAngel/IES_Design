@@ -83,7 +83,7 @@ en verde si ya están asignados a algún indicador y en rojo si no.
   se elige la SA y aparecen tres cuadros. En el primero, una fila por actividad:
   nombre, indicador de logro que evalúa (pueden ser varios con el mismo
   instrumento), instrumento y su valor sobre la programación y sobre la SA; una
-  SA sin actividades empieza con una actividad vacía por indicador. En el
+  SA sin actividades empieza vacía y avisa de los indicadores que aún no están en ninguna actividad. En el
   segundo, el peso de cada actividad dentro de cada indicador (solo se escribe
   el peso; el %, los valores y el factor para iDoceo/Additio se calculan
   solos). En el tercero, la vista de las columnas en el cuaderno.
