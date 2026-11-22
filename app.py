@@ -1368,19 +1368,37 @@ def _ajuste_pesos_ipf(il_rows, ce_list, ce_ced, ce_p, sits):
                 "Indicadores de logro). Un indicador sin opción en una categoría se queda en la "
                 "de su izquierda."
             )
+            import html as _html
+
             _fm = lambda v: f"{v:.2f}".rstrip("0").rstrip(".") + " %"
-            _filas_niv = []
-            for g in tabla_por_niveles(il_rows, _cats_niv, ce_p):
+            _e = _html.escape
+            _borde = "1px solid #D6DEE8"
+            _th = ("padding:5px 9px;background:#0F5CA8;color:#fff;text-align:center;"
+                   f"border:{_borde};")
+            _nom_sub = " · ".join(c["nombre"] for c in _cats_niv[1:]) or "Subcategoría"
+            _cab = [_cats_niv[0]["nombre"], "Peso", _nom_sub, "Peso", "Criterios"]
+            _cuerpo = []
+            for gi, g in enumerate(tabla_por_niveles(il_rows, _cats_niv, ce_p)):
+                _bg = "#E6EEF8" if gi % 2 == 0 else "#FFFFFF"
                 _mas = len(g["lineas"]) > 1
                 for i, ln in enumerate(g["lineas"]):
-                    _filas_niv.append([
-                        g["nombre"] if i == 0 else "", _fm(g["peso"]) if i == 0 else "",
-                        ln["sub"] or (g["nombre"] if _mas else ""), _fm(ln["peso"]) if _mas else "",
-                        " ".join(ln["ce"]),
-                    ])
+                    # trazo grueso azul al empezar cada categoría principal
+                    _top = "border-top:3px solid #0F5CA8;" if i == 0 else ""
+                    _td = f"padding:4px 9px;background:{_bg};border:{_borde};{_top}vertical-align:middle;"
+                    _c = []
+                    if i == 0:
+                        _rs = f' rowspan="{len(g["lineas"])}"'
+                        _c.append(f'<td{_rs} style="{_td}font-weight:700;">{_e(g["nombre"])}</td>')
+                        _c.append(f'<td{_rs} style="{_td}font-weight:700;">{_fm(g["peso"])}</td>')
+                    _c.append(f'<td style="{_td}">{_e(ln["sub"] or (g["nombre"] if _mas else ""))}</td>')
+                    _c.append(f'<td style="{_td}">{_fm(ln["peso"]) if _mas else ""}</td>')
+                    _c.append(f'<td style="{_td}">{_e(" ".join(ln["ce"]))}</td>')
+                    _cuerpo.append("<tr>" + "".join(_c) + "</tr>")
             st.markdown(
-                _tabla_html([_cats_niv[0]["nombre"], "Peso", "Subcategoría", "Peso", "Criterios"],
-                            _filas_niv),
+                '<table style="border-collapse:collapse;width:100%;font-size:0.9rem;'
+                'margin-bottom:0.6rem"><thead><tr>'
+                + "".join(f'<th style="{_th}">{_e(h)}</th>' for h in _cab)
+                + "</tr></thead><tbody>" + "".join(_cuerpo) + "</tbody></table>",
                 unsafe_allow_html=True,
             )
 
