@@ -1356,24 +1356,52 @@ def _ajuste_pesos_ipf(il_rows, ce_list, ce_ced, ce_p, sits):
     if ss.pop("ipf_msg", None):
         st.success("Pesos cargados: las tablas y los gráficos ya están actualizados.")
 
-    # Modo: por instrumento y horas (el de siempre) o por una categoría de los
-    # indicadores (p. ej. Destrezas), si se ha definido alguna.
-    _cats_aj = [c for c in ss.get("il_categorias", []) if c["nombre"]]
-    if _cats_aj:
-        _modos = {"ie": "Instrumento y horas", **{c["id"]: f"Por {c['nombre']}" for c in _cats_aj}}
-        if ss.get("ipf_modo") not in _modos:
-            ss.ipf_modo = "ie"
-        _modo = st.radio("Ajustar por", list(_modos), format_func=_modos.get, horizontal=True,
-                         key="ipf_modo")
-        if _modo != "ie":
-            from ui import ajuste_categoria
+    # Resumen por niveles: el orden de las categorías (de izquierda a derecha)
+    # son los niveles; una a la derecha subdivide la anterior y vacía = solo la anterior.
+    _cats_niv = [c for c in ss.get("il_categorias", []) if c["nombre"]]
+    if _cats_niv and il_rows:
+        from tools.categorias import tabla_por_niveles
 
-            ajuste_categoria.pintar(
-                il_rows, ce_list, ce_p, next(c for c in _cats_aj if c["id"] == _modo),
-                tabla_html=_tabla_html,
-                cargar=lambda p, q: _ipf_cargar(p, q, ce_ced, ce_list),
+        with st.expander("Resumen por categorías (niveles)", expanded=False):
+            st.caption(
+                "Cada categoría subdivide la anterior (el orden es el de las columnas de "
+                "Indicadores de logro). Un indicador sin opción en una categoría se queda en la "
+                "de su izquierda."
             )
-            return
+            _fm = lambda v: f"{v:.2f}".rstrip("0").rstrip(".") + " %"
+            _filas_niv = []
+            for g in tabla_por_niveles(il_rows, _cats_niv, ce_p):
+                _mas = len(g["lineas"]) > 1
+                for i, ln in enumerate(g["lineas"]):
+                    _filas_niv.append([
+                        g["nombre"] if i == 0 else "", _fm(g["peso"]) if i == 0 else "",
+                        ln["sub"] or (g["nombre"] if _mas else ""), _fm(ln["peso"]) if _mas else "",
+                        " ".join(ln["ce"]),
+                    ])
+            st.markdown(
+                _tabla_html([_cats_niv[0]["nombre"], "Peso", "Subcategoría", "Peso", "Criterios"],
+                            _filas_niv),
+                unsafe_allow_html=True,
+            )
+
+    # «Ajustar por»: cualquier columna de los indicadores (instrumento,
+    # calificación, agente, SA) o categoría definida por el docente, como una
+    # tabla dinámica; además, el ajuste clásico de instrumentos con horas.
+    from ui import ajuste_categoria
+
+    _agrup, _filas_aj = ajuste_categoria.agrupaciones(
+        il_rows, ss.get("il_categorias", []), ss.get("il_aux", {}))
+    _modos = {"ie": "Instrumento y horas", **{k: c["nombre"] for k, c in _agrup.items()}}
+    if ss.get("ipf_modo") not in _modos:
+        ss.ipf_modo = "ie"
+    _modo = st.selectbox("Ajustar por", list(_modos), format_func=_modos.get, key="ipf_modo")
+    if _modo != "ie":
+        ajuste_categoria.pintar(
+            _filas_aj, ce_list, ce_p, _agrup[_modo],
+            tabla_html=_tabla_html,
+            cargar=lambda p, q: _ipf_cargar(p, q, ce_ced, ce_list),
+        )
+        return
 
     if not reparto_horario(sits):
         st.info("Las situaciones de aprendizaje no tienen horas.")

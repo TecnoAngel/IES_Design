@@ -138,3 +138,55 @@ def id_de_opcion(categoria: dict, nombre) -> int | None:
         if o["nombre"].lower() == nombre and nombre:
             return o["id"]
     return None
+
+
+def tabla_por_niveles(il_rows, categorias, ce_p: dict) -> list[dict]:
+    """Resumen jerárquico de los indicadores por categorías. El **orden** de las
+    categorías son los niveles: la primera es el nivel 1 y cada una a su derecha
+    subdivide la anterior; un indicador sin opción en una categoría se queda en
+    el nivel anterior (si no tiene en ninguna, va a «Sin categoría»).
+
+    Devuelve una lista (en orden de aparición) de grupos de nivel 1::
+
+        {"nombre": "Reading", "peso": 15.0,
+         "lineas": [{"sub": "", "peso": 10.0, "ce": ["1.2", ...]},
+                    {"sub": "Readers", "peso": 5.0, "ce": ["6.2", ...]}]}
+
+    ``peso`` en % de la programación (Σ de (PIL/ΣPIL del CE)·(P/ΣP) de sus
+    indicadores, normalizado a 100). ``sub`` es el resto de niveles unidos con
+    « · » (vacío = solo el nivel 1)."""
+    from tools.ajuste_pesos import pesos_globales
+
+    cats = [c for c in categorias or [] if _s(c.get("nombre"))]
+    filas = [r for r in il_rows if _s(r.get("IL"))]
+    w = pesos_globales(filas, ce_p)
+    total = sum(w.values()) or 1.0
+    nombres = [{o["id"]: _s(o["nombre"]) for o in c.get("opciones", [])} for c in cats]
+
+    def clave(r):
+        asign = r.get("CAT") or {}
+        return tuple(nombres[i].get(asign.get(c["id"]), "") for i, c in enumerate(cats))
+
+    def num(ce):
+        return tuple(int(p) if p.isdigit() else 0 for p in ce.split("."))
+
+    grupos: dict[str, dict] = {}
+    for r in filas:
+        k = clave(r)
+        nivel1 = k[0] if k else ""
+        sub = " · ".join(x for x in k[1:] if x)
+        g = grupos.setdefault(nivel1 or "Sin categoría", {"lineas": {}})
+        ln = g["lineas"].setdefault(sub, {"peso": 0.0, "ce": set()})
+        ln["peso"] += w[_s(r["IL"])] / total * 100
+        ln["ce"].add(_s(r.get("CE")))
+
+    orden = [o["nombre"] for o in (cats[0].get("opciones", []) if cats else [])]
+    claves = sorted(grupos, key=lambda n: (orden.index(n) if n in orden else len(orden), n))
+    out = []
+    for n in claves:
+        lineas = [
+            {"sub": s, "peso": round(v["peso"], 4), "ce": sorted(v["ce"], key=num)}
+            for s, v in sorted(grupos[n]["lineas"].items(), key=lambda kv: (kv[0] != "", kv[0]))
+        ]
+        out.append({"nombre": n, "peso": round(sum(x["peso"] for x in lineas), 4), "lineas": lineas})
+    return out

@@ -17,6 +17,50 @@ import streamlit as st
 from tools.ajuste_pesos import sugerir_por_categoria
 
 
+# Columnas propias de la rejilla de indicadores por las que también se puede
+# ajustar, como si fueran categorías: (clave de la fila, nombre, clave del catálogo).
+COLUMNAS_AGRUPABLES = [
+    ("IE", "Instrumento de evaluación", "IE"),
+    ("CC", "Criterio de calificación", "CC"),
+    ("AE", "Agente evaluador", "AE"),
+    ("SA", "Situación de aprendizaje", None),
+]
+
+
+def _txt(v) -> str:
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return ""
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    return str(v).strip()
+
+
+def agrupaciones(il_rows, categorias, aux) -> tuple[dict, list]:
+    """Todo por lo que se puede ajustar: las columnas de la rejilla (IE, CC, AE,
+    SA) y las categorías definidas por el docente. Devuelve ``({id: categoría},
+    filas)``; las filas llevan en ``CAT`` también el valor de esas columnas, así
+    ``sugerir_por_categoria`` las trata a todas igual. Los ids de las columnas son
+    ``"col:IE"``…; los de las categorías, sus números."""
+    cats: dict = {}
+    filas = [{**r, "CAT": dict(r.get("CAT") or {})} for r in il_rows]
+    for clave, titulo, catalogo in COLUMNAS_AGRUPABLES:
+        valores = [_txt(r.get(clave)) for r in il_rows]
+        usados = sorted({v for v in valores if v}, key=lambda s: (not s.isdigit(), int(s) if s.isdigit() else 0, s))
+        extra = [v for v in (aux or {}).get(catalogo, []) if v and v not in usados] if catalogo else []
+        if not usados:
+            continue
+        cid = f"col:{clave}"
+        cats[cid] = {"id": cid, "nombre": titulo,
+                     "opciones": [{"id": v, "nombre": (f"SA {v}" if clave == "SA" else v)}
+                                  for v in usados + extra]}
+        for f, v in zip(filas, valores):
+            f["CAT"][cid] = v or None
+    for c in categorias or []:
+        if c["nombre"]:
+            cats[c["id"]] = c
+    return cats, filas
+
+
 def pintar(il_rows, ce_list, ce_p, categoria, *, tabla_html, cargar) -> None:
     """``tabla_html(cabeceras, filas, alto=)`` y ``cargar(p_por_ce, pil_por_il)``
     vienen de ``app.py``."""
