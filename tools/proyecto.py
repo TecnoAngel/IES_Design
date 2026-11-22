@@ -153,13 +153,14 @@ def _leer_categorias(con: sqlite3.Connection) -> tuple[list[dict], dict[int, dic
     return normalizar(list(cats.values())), asignadas
 # redaccion.tipo: 'texto' (valor = el texto), 'opcion' (valor = '1' / '0': si
 # aparece una tabla o gráfica automática) o 'tabla' (valor = JSON con la lista
-# de filas, cada una {columna: texto}).
+# de filas, cada una {columna: texto}) o 'extra' (clave = capítulo; valor = JSON
+# con la lista de párrafos que añade el docente, ver ``redaccion.extras``).
 _REDACCION_PARTES = {"texto": "textos", "tabla": "tablas", "opcion": "opciones"}
 
 
 def _leer_redaccion(con: sqlite3.Connection) -> dict:
     """Vacío en los proyectos anteriores a la redacción (no tienen la tabla)."""
-    out: dict[str, dict] = {"textos": {}, "tablas": {}, "opciones": {}}
+    out: dict[str, dict] = {"textos": {}, "tablas": {}, "opciones": {}, "extras": {}}
     if not con.execute(
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'redaccion'"
     ).fetchone():
@@ -169,6 +170,14 @@ def _leer_redaccion(con: sqlite3.Connection) -> dict:
             out["textos"][clave] = valor
         elif tipo == "opcion":
             out["opciones"][clave] = valor == "1"
+        elif tipo == "extra":
+            try:
+                lista = json.loads(valor)
+            except ValueError:
+                lista = []
+            from tools.redaccion import normalizar_extras
+
+            out["extras"][clave] = normalizar_extras(lista if isinstance(lista, list) else [])
         elif tipo == "tabla":
             try:
                 filas = json.loads(valor)
@@ -186,6 +195,12 @@ def _filas_redaccion(redaccion: dict) -> list[tuple[str, str, str]]:
     filas += [
         (k, "tabla", json.dumps(v, ensure_ascii=False))
         for k, v in redaccion.get("tablas", {}).items()
+    ]
+    from tools.redaccion import normalizar_extras
+
+    filas += [
+        (k, "extra", json.dumps(normalizar_extras(v), ensure_ascii=False))
+        for k, v in (redaccion.get("extras") or {}).items() if normalizar_extras(v)
     ]
     return filas
 

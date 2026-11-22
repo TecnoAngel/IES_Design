@@ -96,6 +96,17 @@ def _rotulo(sub, texto: str) -> None:
     _run(p, texto.rstrip(":") + ":", bold=True)
 
 
+def _encabezado_extra(sub, numero: str, texto: str, nivel: int) -> None:
+    """Encabezado de un párrafo añadido por el docente: negrita, con su número
+    (k.1 · k.1.1); el subapartado, además, en cursiva y algo sangrado."""
+    p = sub.add_paragraph()
+    p.paragraph_format.keep_with_next = True
+    p.paragraph_format.space_before = Pt(10 if nivel == 1 else 6)
+    if nivel == 2:
+        p.paragraph_format.left_indent = Cm(0.5)
+    _run(p, f"{numero}  {texto.strip()}", bold=True, italic=(nivel == 2))
+
+
 def _parrafos(sub, texto: str) -> None:
     """Un párrafo por línea; las líneas que empiezan por «- », «• » o «– »
     salen como lista (sin depender de los estilos de lista de la plantilla)."""
@@ -295,7 +306,12 @@ def _cuerpos(tpl: DocxTemplate, redaccion: dict, datos: dict, etapa: str) -> dic
         elif tipo == "tabla":
             puesto = _pon_tabla_docente(sub, elem, redaccion["tablas"].get(clave, []))
         elif redaccion["opciones"].get(clave):
-            if tipo == "auto":
+            if clave == "k_categorias":
+                titulo = str(redaccion["textos"].get("k_categorias_titulo", "")).strip()
+                puesto = _pon_auto(
+                    sub, dict(elem, rotulo=titulo or None),
+                    dict(datos, niveles=red.niveles_categorias(redaccion)))
+            elif tipo == "auto":
                 puesto = _pon_auto(sub, elem, datos)
             else:
                 png = red.grafica_png(clave, datos)
@@ -303,6 +319,19 @@ def _cuerpos(tpl: DocxTemplate, redaccion: dict, datos: dict, etapa: str) -> dic
                     _imagen(sub, png)
                     puesto = True
         out[cuerpo][1] = out[cuerpo][1] or puesto
+    # Párrafos que ha añadido el docente, al final de su capítulo. Sin texto no
+    # sale nada (tampoco su encabezado).
+    for cuerpo, item in out.items():
+        sub = item[0]
+        lista = red.extras_de(redaccion, cuerpo)
+        numeros = red.numerar_extras(lista, cuerpo)
+        for e in lista:
+            if not red.extra_util(e):
+                continue
+            if e["id"] in numeros:
+                _encabezado_extra(sub, numeros[e["id"]], e["encabezado"], e["nivel"])
+            _parrafos(sub, e["texto"])
+            item[1] = True
     for cuerpo, (sub, hay) in out.items():
         if not hay:
             _run(sub.add_paragraph(), SIN_COMPLETAR, italic=True)

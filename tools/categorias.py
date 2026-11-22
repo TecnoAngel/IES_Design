@@ -140,7 +140,7 @@ def id_de_opcion(categoria: dict, nombre) -> int | None:
     return None
 
 
-def tabla_por_niveles(il_rows, categorias, ce_p: dict) -> list[dict]:
+def tabla_por_niveles(il_rows, categorias, ce_p: dict, niveles: int | None = None) -> list[dict]:
     """Resumen jerárquico de los indicadores por categorías. El **orden** de las
     categorías son los niveles: la primera es el nivel 1 y cada una a su derecha
     subdivide la anterior; un indicador sin opción en una categoría se queda en
@@ -154,10 +154,15 @@ def tabla_por_niveles(il_rows, categorias, ce_p: dict) -> list[dict]:
 
     ``peso`` en % de la programación (Σ de (PIL/ΣPIL del CE)·(P/ΣP) de sus
     indicadores, normalizado a 100). ``sub`` es el resto de niveles unidos con
-    « · » (vacío = solo el nivel 1)."""
+    « · » (vacío = solo el nivel 1).
+
+    ``niveles``: cuántas categorías se usan (1 = solo la primera; None o 0 =
+    todas)."""
     from tools.ajuste_pesos import pesos_globales
 
     cats = [c for c in categorias or [] if _s(c.get("nombre"))]
+    if niveles:
+        cats = cats[: max(1, int(niveles))]
     filas = [r for r in il_rows if _s(r.get("IL"))]
     w = pesos_globales(filas, ce_p)
     total = sum(w.values()) or 1.0
@@ -190,3 +195,33 @@ def tabla_por_niveles(il_rows, categorias, ce_p: dict) -> list[dict]:
         ]
         out.append({"nombre": n, "peso": round(sum(x["peso"] for x in lineas), 4), "lineas": lineas})
     return out
+
+
+def tabla_plana(il_rows, categorias, ce_p: dict, niveles: int | None = None) -> tuple[list[str], list[list[str]]]:
+    """``(cabeceras, filas)`` de ``tabla_por_niveles`` para el Word y las vistas
+    previas: la categoría principal y su peso solo en la primera línea de cada
+    grupo, y la columna de subcategorías solo si se usa más de un nivel."""
+    cats = [c for c in categorias or [] if _s(c.get("nombre"))]
+    if niveles:
+        cats = cats[: max(1, int(niveles))]
+    if not cats:
+        return [], []
+
+    def pct(v: float) -> str:
+        return f"{v:.2f}".rstrip("0").rstrip(".").replace(".", ",") + " %"
+
+    con_sub = len(cats) > 1
+    cab = [cats[0]["nombre"], "Peso"]
+    if con_sub:
+        cab += [" · ".join(c["nombre"] for c in cats[1:]), "Peso"]
+    cab.append("Criterios")
+    filas: list[list[str]] = []
+    for g in tabla_por_niveles(il_rows, cats, ce_p):
+        mas = len(g["lineas"]) > 1
+        for i, ln in enumerate(g["lineas"]):
+            f = [g["nombre"] if i == 0 else "", pct(g["peso"]) if i == 0 else ""]
+            if con_sub:
+                f += [ln["sub"] or (g["nombre"] if mas else ""), pct(ln["peso"]) if mas else ""]
+            f.append(" ".join(ln["ce"]))
+            filas.append(f)
+    return cab, filas

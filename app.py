@@ -805,6 +805,7 @@ def _datos_redaccion() -> dict:
         sits=_sa_filas(),
         il_rows=il_recompute(ss.get("il_pending", ss.get("il_rows", [])), ss.il_ce_ced, ss.il_ce_list),
         ce_p={r["CE"]: r["P"] for r in ss.get("ce_rows", [])} or dict(ss.get("il_ce_p", {})),
+        categorias=ss.get("il_categorias", []),
     )
 
 
@@ -1375,10 +1376,18 @@ def _ajuste_pesos_ipf(il_rows, ce_list, ce_ced, ce_p, sits):
             _borde = "1px solid #D6DEE8"
             _th = ("padding:5px 9px;background:#0F5CA8;color:#fff;text-align:center;"
                    f"border:{_borde};")
-            _nom_sub = " · ".join(c["nombre"] for c in _cats_niv[1:]) or "Subcategoría"
-            _cab = [_cats_niv[0]["nombre"], "Peso", _nom_sub, "Peso", "Criterios"]
+            _n_niv = len(_cats_niv)
+            if _n_niv > 1:
+                _n_niv = st.selectbox(
+                    "Niveles que se enseñan", list(range(1, _n_niv + 1)), index=_n_niv - 1,
+                    format_func=lambda n: f"{n}: " + " › ".join(c["nombre"] for c in _cats_niv[:n]),
+                    key="ipf_niveles",
+                )
+            _cats_v = _cats_niv[:_n_niv]
+            _nom_sub = " · ".join(c["nombre"] for c in _cats_v[1:])
+            _cab = [_cats_v[0]["nombre"], "Peso"] + ([_nom_sub, "Peso"] if _nom_sub else []) + ["Criterios"]
             _cuerpo = []
-            for gi, g in enumerate(tabla_por_niveles(il_rows, _cats_niv, ce_p)):
+            for gi, g in enumerate(tabla_por_niveles(il_rows, _cats_v, ce_p)):
                 _bg = "#E6EEF8" if gi % 2 == 0 else "#FFFFFF"
                 _mas = len(g["lineas"]) > 1
                 for i, ln in enumerate(g["lineas"]):
@@ -1390,8 +1399,9 @@ def _ajuste_pesos_ipf(il_rows, ce_list, ce_ced, ce_p, sits):
                         _rs = f' rowspan="{len(g["lineas"])}"'
                         _c.append(f'<td{_rs} style="{_td}font-weight:700;">{_e(g["nombre"])}</td>')
                         _c.append(f'<td{_rs} style="{_td}font-weight:700;">{_fm(g["peso"])}</td>')
-                    _c.append(f'<td style="{_td}">{_e(ln["sub"] or (g["nombre"] if _mas else ""))}</td>')
-                    _c.append(f'<td style="{_td}">{_fm(ln["peso"]) if _mas else ""}</td>')
+                    if _nom_sub:
+                        _c.append(f'<td style="{_td}">{_e(ln["sub"] or (g["nombre"] if _mas else ""))}</td>')
+                        _c.append(f'<td style="{_td}">{_fm(ln["peso"]) if _mas else ""}</td>')
                     _c.append(f'<td style="{_td}">{_e(" ".join(ln["ce"]))}</td>')
                     _cuerpo.append("<tr>" + "".join(_c) + "</tr>")
             st.markdown(

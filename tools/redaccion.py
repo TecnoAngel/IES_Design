@@ -421,6 +421,10 @@ CAPITULOS: list[dict] = [
              texto("k_nota_redondeo", "Nota bajo la tabla", "",
                    "* Al ser tablas de visualización de resultados, la suma de los porcentajes podría no "
                    "ser exactamente 100 debido al redondeo."),
+             auto("k_categorias", "Resumen por categorías de los indicadores (tabla dinámica)",
+                  "Los pesos agrupados por las categorías que se hayan definido en «Indicadores de "
+                  "logro» (p. ej. destrezas y subdestrezas). Se elige el título y cuántos niveles "
+                  "salen. No sale si no hay categorías.", activo=False),
              auto("k_detalle", "Instrumento, agente evaluador y situación de aprendizaje de cada "
                   "indicador de logro",
                   "Las tablas de la guía (instrumentos, momentos y agentes por indicador) reunidas "
@@ -766,13 +770,93 @@ def filas_dicts(elem: dict, filas: list[list[str]]) -> list[dict[str, str]]:
     return [dict(zip(nombres, f)) for f in filas]
 
 
+# Ajustes de la tabla «Resumen por categorías» (se guardan como textos):
+# título que sale en el documento (vacío = sin título) y nº de niveles (0 = todos).
+CATEGORIAS_AJUSTES = {"k_categorias_titulo": "Resumen por categorías", "k_categorias_niveles": "0"}
+
+
+# Párrafos que añade el docente en cualquier capítulo (o anexo): ``extras`` =
+# {cuerpo: [{"id", "nivel", "encabezado", "texto"}]}, donde ``cuerpo`` es el id del
+# capítulo (a…ñ) o ``anexo_1``…``anexo_3``. Salen al final de su capítulo. No hay
+# esquema fijo: añadir o quitar párrafos no toca nada más del proyecto.
+NIVELES_EXTRA = {0: "Sin encabezado (sigue el texto)", 1: "Apartado", 2: "Subapartado"}
+
+
+def etiqueta_numeracion(cuerpo: str) -> str:
+    """Prefijo con el que se numeran los encabezados añadidos: la letra del
+    capítulo (k → «k.1») o el número romano del anexo (anexo_2 → «II.1»)."""
+    if cuerpo.startswith("anexo_"):
+        return {"1": "I", "2": "II", "3": "III"}.get(cuerpo[6:], cuerpo[6:])
+    return "ñ" if cuerpo == "nn" else cuerpo
+
+
+def normalizar_extras(lista) -> list[dict]:
+    """Limpia lo que venga (de un archivo o de la sesión): ids enteros y únicos,
+    niveles 0-2 y textos sin None."""
+    out, usados = [], set()
+    for e in lista or []:
+        if not isinstance(e, dict):
+            continue
+        try:
+            i = int(e.get("id"))
+        except (TypeError, ValueError):
+            i = 0
+        while i <= 0 or i in usados:
+            i = max(usados or {0}) + 1
+        usados.add(i)
+        try:
+            nivel = min(2, max(0, int(e.get("nivel", 0))))
+        except (TypeError, ValueError):
+            nivel = 0
+        out.append({"id": i, "nivel": nivel, "encabezado": _s(e.get("encabezado")),
+                    "texto": str(e.get("texto") or "")})
+    return out
+
+
+def extras_de(redaccion: dict, cuerpo: str) -> list[dict]:
+    return normalizar_extras((redaccion.get("extras") or {}).get(cuerpo, []))
+
+
+def extra_util(e: dict) -> bool:
+    """Un párrafo sin texto no sale (ni su encabezado)."""
+    return bool(str(e.get("texto", "")).strip())
+
+
+def numerar_extras(lista: list[dict], cuerpo: str) -> dict[int, str]:
+    """{id: número} de los párrafos que salen con encabezado: apartados
+    ``k.1``, ``k.2``… y subapartados ``k.1.1``… Solo cuentan los que llevan
+    encabezado **y** texto; un subapartado sin apartado previo cuenta como apartado."""
+    pref = etiqueta_numeracion(cuerpo)
+    n1 = n2 = 0
+    out: dict[int, str] = {}
+    for e in lista:
+        if not extra_util(e) or not e["encabezado"] or e["nivel"] == 0:
+            continue
+        if e["nivel"] == 1 or n1 == 0:
+            n1 += 1
+            n2 = 0
+            out[e["id"]] = f"{pref}.{n1}"
+        else:
+            n2 += 1
+            out[e["id"]] = f"{pref}.{n1}.{n2}"
+    return out
+
+
+def niveles_categorias(redaccion: dict) -> int:
+    try:
+        return max(0, int(str(redaccion.get("textos", {}).get("k_categorias_niveles", "0")) or 0))
+    except ValueError:
+        return 0
+
+
 def valores_iniciales(materia: dict) -> dict:
     """Redacción de un proyecto que aún no tiene nada escrito: los textos
     propuestos (con sus marcas ya sustituidas), las filas propuestas de las
     tablas y qué tablas y gráficas automáticas aparecen."""
     m = marcas(materia)
     et = etapa_app(materia)
-    out: dict[str, dict] = {"textos": {}, "tablas": {}, "opciones": {}}
+    out: dict[str, dict] = {"textos": dict(CATEGORIAS_AJUSTES), "tablas": {}, "opciones": {},
+                            "extras": {}}
     for _c, e in todos():
         if e["tipo"] == "texto":
             out["textos"][e["clave"]] = _sustituir(e["defecto"], m)
@@ -791,6 +875,7 @@ def completar(redaccion: dict | None, materia: dict) -> dict:
     out = valores_iniciales(materia)
     for parte in ("textos", "tablas", "opciones"):
         out[parte].update((redaccion or {}).get(parte, {}))
+    out["extras"] = {k: normalizar_extras(v) for k, v in ((redaccion or {}).get("extras") or {}).items()}
     return out
 
 
@@ -843,7 +928,8 @@ def _num_sa(v: Any):
         return None
 
 
-def preparar(*, cur: dict, sits: list[dict], il_rows: list[dict], ce_p: dict[str, float]) -> dict:
+def preparar(*, cur: dict, sits: list[dict], il_rows: list[dict], ce_p: dict[str, float],
+             categorias: list[dict] | None = None) -> dict:
     """Reúne lo que necesitan las tablas y gráficas automáticas.
 
     ``cur``: lo que devuelve ``curriculo.cargar_materia``. ``sits``: filas de
@@ -857,6 +943,7 @@ def preparar(*, cur: dict, sits: list[dict], il_rows: list[dict], ce_p: dict[str
         "sits": [s for s in sits if _num_sa(s.get("SA")) is not None],
         "il_rows": il_rows,
         "ce_p": ce_p,
+        "categorias": categorias or [],
         "pct_ce": {ce: (float(ce_p.get(ce, 0) or 0) / total_p if total_p else 0.0)
                    for ce in cur["ce_list"]},
         "w_il": pesos_il(il_rows, ce_p),
@@ -1019,6 +1106,12 @@ def _t_criterios(d):
     return ["CE", "Criterio de evaluación"], filas
 
 
+def _t_categorias(d):
+    from tools.categorias import tabla_plana
+
+    return tabla_plana(d["il_rows"], d.get("categorias", []), d["ce_p"], d.get("niveles"))
+
+
 _TABLAS: dict[str, Callable[[dict], tuple[list[str], list[list[str]]]]] = {
     "c_competencias": _t_competencias,
     "c_mapa": _t_mapa,
@@ -1026,6 +1119,7 @@ _TABLAS: dict[str, Callable[[dict], tuple[list[str], list[list[str]]]]] = {
     "d_indicadores": _t_indicadores,
     "e_tabla": _t_transversales_sa,
     "k_instrumentos": _t_instrumentos,
+    "k_categorias": _t_categorias,
     "k_detalle": _t_detalle,
     "k_pesos_sa": _t_pesos_sa,
     "m_secuencia": _t_secuencia,
