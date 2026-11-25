@@ -504,7 +504,10 @@ from tools.indicadores_logro import recompute as il_recompute
 from tools.info_familias import CAMPOS_KEYS as FAM_CAMPOS
 from tools.programacion_aula_editor import desde_formato_antiguo
 from ui import categorias as ui_categorias
-from tools.proyecto import DATOS_CAMPOS, SA_CAMPOS, estado_vacio, guardar_proyecto, leer_proyecto
+from tools.proyecto import (
+    DATOS_CAMPOS, SA_CAMPOS, es_version_futura, estado_vacio, guardar_proyecto, leer_meta,
+    leer_proyecto,
+)
 from tools.situaciones_aprendizaje import TRIMESTRES
 
 SA_COLS = ["SA", "EV", "DSA", "HSA"]
@@ -589,7 +592,7 @@ def _cargar_estado(estado: dict, nombre: str) -> None:
     for _k in (
         "prog_out", "sa_grid_rows", "ce_rows", "il_pending", "pa_docx", "pd_docx",
         "consist_seen", "fam_docx", "prog_msg", "ipf_obj_df", "il_filtro_sa", "il_ocultas",
-        "pa_sa_actual",
+        "pa_sa_actual", "proy_aviso",
     ):
         ss.pop(_k, None)
     # ...los widgets con estado propio (familias, campos de aula, datos
@@ -653,12 +656,21 @@ def _abrir_o_crear(apilado: bool) -> None:
             st.session_state.proy_file_seen = _huella(proy_file)
             try:
                 _cargar_estado(leer_proyecto(proy_file.getvalue()), proy_file.name.rsplit(".", 1)[0])
+                st.session_state.proy_aviso = (
+                    "Este proyecto lo guardó una versión más nueva de la aplicación: puede tener datos "
+                    "que esta versión no conoce y que se perderían al guardar. Guarda con otro nombre "
+                    "o actualiza la aplicación antes de seguir."
+                    if es_version_futura(leer_meta(proy_file.getvalue())) else None
+                )
             except Exception as exc:
                 st.error(f"No se ha podido abrir el proyecto: {exc}")
             else:
                 # Se vuelve a pintar ya con la barra compacta.
                 st.rerun()
 
+
+if _hay_proyecto() and st.session_state.get("proy_aviso"):
+    st.warning(st.session_state.proy_aviso)
 
 # Barra del proyecto. Sin proyecto, abrir/crear es lo único que se puede hacer
 # y va a la vista. Con proyecto se queda en una sola línea: qué proyecto es,

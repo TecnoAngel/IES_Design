@@ -285,6 +285,15 @@ def _abrir(payload: bytes) -> sqlite3.Connection:
     return con
 
 
+def es_version_futura(meta: dict) -> bool:
+    """¿Lo ha guardado una versión de la app más nueva que ésta? (puede traer
+    datos que esta versión no conoce y que perdería al guardar)."""
+    try:
+        return int(meta.get("schema_version") or 0) > int(SCHEMA_VERSION)
+    except ValueError:
+        return False
+
+
 def leer_meta(payload: bytes) -> dict:
     con = _abrir(payload)
     try:

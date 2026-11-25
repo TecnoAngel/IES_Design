@@ -215,6 +215,15 @@ Las claves **no se renombran ni se reutilizan**: son lo que liga el texto guarda
 6. **Contenido nuevo dentro de tablas abiertas** (`redaccion`: nuevos elementos y párrafos añadidos; `config`, `datos_generales`,
    `familias`, `situacion_campos`: nuevos campos) **no requiere cambio de esquema**.
 
+#### Cómo se protege (pruebas automáticas)
+
+`tests/test_compatibilidad.py` guarda los esquemas de cada versión (`tests/esquemas/schema_N.sql`, **nunca se editan**) y
+comprueba que cada uno se abre con la app actual, se guarda y se vuelve a abrir sin perder nada; que el esquema actual solo
+añade a lo congelado; y que un archivo con elementos desconocidos o datos huérfanos se abre sin error. Ejecutar:
+`.venv\Scripts\python.exe -m unittest discover -s tests -t .`. Si algún día hay que cambiar el esquema: subir
+`SCHEMA_VERSION`, añadir `schema_<N+1>.sql` y listarlo en `ESQUEMAS`. Si un proyecto lo guardó una versión más nueva
+que la app, esta lo avisa al abrirlo.
+
 ### 2.5 Puntos delicados a tener presentes
 
 - **El código de un IL no se guarda y las actividades lo usan** (`actividad_indicadores.il`). Si se cambian CE o el orden de

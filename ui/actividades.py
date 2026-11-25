@@ -315,9 +315,13 @@ def pintar(sa, il_rows: list[dict], ce_p: dict[str, float]) -> None:
 def _cuadro_actividades(d: dict) -> None:
     ss = st.session_state
     il_info = d["il_info"]
-    # Instrumentos a elegir: los del catálogo y los que ya usan indicadores de la SA.
-    ies = [str(x) for x in ss.get("il_aux", {}).get("IE", []) if x]
-    ies += [str(r["IE"]) for r in d["ils_sa"] if r.get("IE") and str(r["IE"]) not in ies]
+    # Instrumentos a elegir: solo los que tiene algún indicador de la SA (con
+    # otro no habría ningún indicador que elegir), en el orden del catálogo.
+    catalogo = [str(x) for x in ss.get("il_aux", {}).get("IE", []) if x]
+    ies = sorted(
+        dict.fromkeys(str(r["IE"]) for r in d["ils_sa"] if r.get("IE")),
+        key=lambda ie: catalogo.index(ie) if ie in catalogo else len(catalogo),
+    )
 
     def etiqueta_il(il: str) -> str:
         """«1.2.1 · texto del indicador» (lo que se ve en el selector)."""
